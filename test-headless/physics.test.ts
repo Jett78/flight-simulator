@@ -104,6 +104,27 @@ function makeSim() {
   );
 }
 
+// ---------- 3b. Tapped bank still turns (live-test scenario) ----------
+// The browser test harness (and many players) tap keys instead of
+// holding them. A 0.15 s tap must still produce a visible turn that
+// persists for several seconds hands-off (auto-level must not kill it
+// instantly). Regression test for the weak live bank turn.
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]);
+  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil(["KeyS"], () => controller.getState().altitude > 40, 20);
+  run(1, []);
+  const h0 = controller.getState().headingDeg;
+  run(0.15, ["KeyD"]); // a tap, not a hold
+  run(5, []);
+  const h1 = controller.getState().headingDeg;
+  let dh = h1 - h0;
+  if (dh < -180) dh += 360;
+  if (dh > 180) dh -= 360;
+  check("tapped bank produces a visible turn", dh > 5, `heading change after tap=${dh.toFixed(1)}°`);
+}
+
 // ---------- 4. Stall + recovery ----------
 {
   const { controller, run, runUntil } = makeSim();

@@ -385,10 +385,14 @@ export class AircraftController {
     const stability = 1 - 0.75 * stallFactor;
     this.computeBasis();
 
-    // Hands-off roll: ease back toward wings-level
+    // Hands-off roll: ease back toward wings-level. Gain is gentle on
+    // purpose: at 0.45 the bank (and with it the turn) died within a
+    // couple of seconds of releasing the key — found by live testing.
+    // 0.22 keeps a tapped bank turning for several seconds while still
+    // self-levelling eventually.
     if (Math.abs(this.rollInput) < 0.15) {
       const rollAngle = Math.asin(clamp(this._right.y, -1, 1));
-      node.rotate(AXIS_BACK, -rollAngle * 0.45 * stability * dt, Space.LOCAL);
+      node.rotate(AXIS_BACK, -rollAngle * 0.22 * stability * dt, Space.LOCAL);
     }
 
     // Coordinated turn: in a bank, lift's horizontal component curves
