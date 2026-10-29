@@ -28,8 +28,7 @@ import "@babylonjs/loaders/glTF";
  * never read anything from the model.
  */
 
-const MODEL_DIR = "/models/";
-const MODEL_FILE = "cesium-air.gltf";
+const MODEL_URL = "/models/cesium-air.gltf";
 const TARGET_LENGTH = 11; // metres, nose to tail
 const GEAR_DROP = 2.25; // model underside below the aircraft root (== controller GEAR_DEPTH)
 
@@ -72,11 +71,12 @@ export async function loadAircraftModel(
   scene: Scene,
   aircraftRoot: TransformNode,
   addShadowCaster: (mesh: AbstractMesh) => void,
+  url: string = MODEL_URL,
 ): Promise<boolean> {
   // Snapshot the placeholder meshes before the model exists.
   const placeholders = aircraftRoot.getChildMeshes(false);
   try {
-    const result = await SceneLoader.ImportMeshAsync("", MODEL_DIR, MODEL_FILE, scene);
+    const result = await SceneLoader.ImportMeshAsync("", "", url, scene);
     const gltfRoot = result.meshes[0];
     if (!gltfRoot) throw new Error("Model file contained no meshes");
 
@@ -84,20 +84,49 @@ export async function loadAircraftModel(
     container.parent = aircraftRoot;
     gltfRoot.parent = container;
 
+    // Force every world matrix in the new hierarchy to be computed
+    // NOW (parents first). Freshly loaded nodes otherwise report
+    // stale positions — the propellers' absolute positions came
+    // back in unconverted file space, which flipped the measured
+    // nose direction and put the first fitted model on backwards.
+    aircraftRoot.computeWorldMatrix(true);
+    for (const node of [container, ...container.getDescendants(false)]) {
+      if (node instanceof TransformNode) node.computeWorldMatrix(true);
+    }
+
     // --- Measure in root space ---
     let bounds = boundsInRootSpace(container, aircraftRoot);
 
     // --- Find the nose: propellers are spread along the span and
     // mounted near the nose, so the prop plane sits much closer to
     // the nose end of the airframe than to the tail end. ---
-    const propNodes = [...result.meshes, ...result.transformNodes].filter((n) =>
-      /prop/i.test(n.name),
+    // The propeller NODES (not their "_primitive" meshes — those
+    // share one position per prop and read as a single point).
+    // Dedupe by position and keep the two farthest apart.
+    const propCandidates = [...result.meshes, ...result.transformNodes].filter(
+      (n) => /prop/i.test(n.name) && !/primitive/i.test(n.name),
     );
+    const propPoints: Vector3[] = [];
+    for (const node of propCandidates) {
+      const p = toRootSpace(node.getAbsolutePosition(), aircraftRoot);
+      if (!propPoints.some((q) => Vector3.Distance(q, p) < 0.5)) propPoints.push(p);
+    }
+    let propNodes: Vector3[] = [];
+    if (propPoints.length >= 2) {
+      let best = -1;
+      for (let i = 0; i < propPoints.length; i++)
+        for (let j = i + 1; j < propPoints.length; j++) {
+          const d = Vector3.Distance(propPoints[i], propPoints[j]);
+          if (d > best) {
+            best = d;
+            propNodes = [propPoints[i], propPoints[j]];
+          }
+        }
+    }
     let noseDir = new Vector3(0, 0, -1); // fallback: loaded forward is already -Z
     let length = bounds.max.z - bounds.min.z;
     if (propNodes.length >= 2) {
-      const p1 = toRootSpace(propNodes[0].getAbsolutePosition(), aircraftRoot);
-      const p2 = toRootSpace(propNodes[1].getAbsolutePosition(), aircraftRoot);
+      const [p1, p2] = propNodes;
       const span = p2.subtract(p1);
       span.y = 0;
       if (span.length() > 0.01) {
@@ -128,6 +157,19 @@ export async function loadAircraftModel(
     const cx = (bounds.min.x + bounds.max.x) / 2;
     const cz = (bounds.min.z + bounds.max.z) / 2;
     container.position.set(-cx, -GEAR_DROP - bounds.min.y, -cz);
+
+    // Verify the fit before showing it: the measured nose, pushed
+    // through the container's transform, must point along -Z in
+    // root space. (A warning only — the visual check is the judge.)
+    {
+      const inv = aircraftRoot.getWorldMatrix().clone();
+      inv.invert();
+      const world = container.getWorldMatrix().multiply(inv);
+      const fitted = Vector3.TransformNormal(noseDir, world).normalize();
+      if (Math.abs(fitted.z + 1) > 0.2 || Math.abs(fitted.x) > 0.2) {
+        console.warn("Aircraft model fit looks wrong:", fitted.toString());
+      }
+    }
 
     // --- Presentation: shadows + spinning propellers ---
     for (const mesh of result.meshes) {
