@@ -41,8 +41,8 @@ import { createMaterial } from "./materials";
 
 export const SEA_LEVEL = -1.8;
 
-const TERRAIN_SIZE = 2800;
-const TERRAIN_SUBDIVISIONS = 200;
+const TERRAIN_SIZE = 4200;
+const TERRAIN_SUBDIVISIONS = 250;
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const smoothstep = (x: number) => {
@@ -67,35 +67,38 @@ interface Peak {
   h: number;
   r: number;
 }
+// Phase 12: positions/radii scaled x1.5 with the bigger island
+// (heights unchanged); the near hills use ~x1.3 so they stay
+// prominent from the runway.
 const PEAKS: Peak[] = [
-  { x: 620, z: -430, h: 165, r: 330 },
-  { x: -680, z: -260, h: 140, r: 300 },
-  { x: -430, z: 570, h: 120, r: 280 },
-  { x: 540, z: 640, h: 105, r: 260 },
-  { x: -360, z: -900, h: 150, r: 340 },
+  { x: 930, z: -645, h: 165, r: 495 },
+  { x: -1020, z: -390, h: 140, r: 450 },
+  { x: -645, z: 855, h: 120, r: 420 },
+  { x: 810, z: 960, h: 105, r: 390 },
+  { x: -540, z: -1350, h: 150, r: 510 },
   // Scenery pass (0.10.2): two more backdrop peaks near the island
   // rim — far west and far north — kept well clear of the airport,
   // the departure corridor and the checkpoint route.
-  { x: -980, z: -40, h: 88, r: 300 },
-  { x: 180, z: -1080, h: 92, r: 300 },
+  { x: -1470, z: -60, h: 88, r: 450 },
+  { x: 270, z: -1620, h: 92, r: 450 },
   // Near hills (live-check fix, 0.11.0): the big peaks are real
   // but read as a flat horizon strip from the runway. These lower,
   // closer hills east/west of the field are what a player standing
   // on the runway actually SEES as hills. All are clear of the
   // approach corridor and the checkpoint discs (verified by the
   // M8 clearance test).
-  { x: 620, z: 260, h: 38, r: 210 },
-  { x: -540, z: 120, h: 34, r: 200 },
-  { x: 730, z: 400, h: 34, r: 200 },
+  { x: 810, z: 340, h: 40, r: 270 },
+  { x: -700, z: 160, h: 36, r: 260 },
+  { x: 950, z: 520, h: 36, r: 260 },
 ];
 
 /** Village pad centre (south-east shore) and its flattened height. */
-export const VILLAGE = { x: 330, z: 700, r: 58, h: 3.4 };
+export const VILLAGE = { x: 520, z: 1080, r: 80, h: 3.4 };
 
 /** Signed distance outside the airport rectangle (0 when inside). */
 function airportBoxDistance(x: number, z: number): number {
-  const dx = Math.max(Math.abs(x) - 150, 0);
-  const dz = Math.max(Math.abs(z) - 175, 0);
+  const dx = Math.max(Math.abs(x) - 175, 0);
+  const dz = Math.max(Math.abs(z) - 225, 0);
   return Math.hypot(dx, dz);
 }
 
@@ -103,8 +106,8 @@ function airportBoxDistance(x: number, z: number): number {
 export function heightAt(x: number, z: number): number {
   const r = Math.hypot(x, z);
   const angle = Math.atan2(z, x);
-  const coastR = 1080 + 60 * Math.sin(angle * 3 + 1.3) + 30 * Math.sin(angle * 7 - 0.5);
-  const coastT = clamp01((coastR - r) / 220); // 1 inland -> 0 offshore
+  const coastR = 1620 + 90 * Math.sin(angle * 3 + 1.3) + 45 * Math.sin(angle * 7 - 0.5);
+  const coastT = clamp01((coastR - r) / 330); // 1 inland -> 0 offshore
 
   // Rolling hills, growing with distance from the airport pad.
   // 0.10.2 scenery pass: stronger, closer hills (they used to start
@@ -137,14 +140,14 @@ export function heightAt(x: number, z: number): number {
   let landH = Math.max(0.5, 1.7 + hillsShaped);
   // Village pad: flatten to a constant height near the shore
   const dVillage = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
-  const villageWeight = 1 - smoothstep((dVillage - VILLAGE.r) / 55);
+  const villageWeight = 1 - smoothstep((dVillage - VILLAGE.r) / 80);
   landH = landH * (1 - villageWeight) + VILLAGE.h * villageWeight;
 
   // Blend land into seabed across the coastline
   let h = -7 + (landH + 7) * smoothstep(coastT);
 
   // Airport pad: perfectly flat y=0 (the airport geometry assumes it)
-  const flatWeight = 1 - smoothstep(dAirport / 170);
+  const flatWeight = 1 - smoothstep(dAirport / 220);
   h *= 1 - flatWeight;
   return h;
 }
@@ -233,7 +236,7 @@ export function createIsland(scene: Scene): IslandResult {
   // ---------- Sky dome (gradient vertex colours, no fog) ----------
   const sky = MeshBuilder.CreateSphere(
     "sky-dome",
-    { diameter: 8400, segments: 24 },
+    { diameter: 12600, segments: 24 },
     scene,
   );
   {
@@ -242,7 +245,7 @@ export function createIsland(scene: Scene): IslandResult {
     if (positions) {
       const c: number[] = [];
       for (let i = 0; i < positions.length; i += 3) {
-        const yNorm = positions[i + 1] / 4200; // -1..1
+        const yNorm = positions[i + 1] / 6300; // -1..1
         const t = Math.max(0, Math.min(1, (yNorm + 0.12) / 1.12));
         // horizon (pale) -> zenith (deep blue)
         c[0] = 0.74 + (0.22 - 0.74) * t;
@@ -273,7 +276,7 @@ export function createIsland(scene: Scene): IslandResult {
   // ---------- Ocean ----------
   const ocean = MeshBuilder.CreateGround(
     "ocean",
-    { width: 9000, height: 9000, subdivisions: 1 },
+    { width: 14000, height: 14000, subdivisions: 1 },
     scene,
   );
   ocean.position.y = SEA_LEVEL;
@@ -369,11 +372,11 @@ export function createIsland(scene: Scene): IslandResult {
   );
   canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.2, 0.45, 0.19);
 
-  const TREE_ATTEMPTS = 2400;
+  const TREE_ATTEMPTS = 3400;
   let placed = 0;
-  for (let i = 0; i < TREE_ATTEMPTS && placed < 850; i++) {
-    const x = (rng() * 2 - 1) * 1030;
-    const z = (rng() * 2 - 1) * 1030;
+  for (let i = 0; i < TREE_ATTEMPTS && placed < 1150; i++) {
+    const x = (rng() * 2 - 1) * 1560;
+    const z = (rng() * 2 - 1) * 1560;
     // Sit trees on the RENDERED surface (see terrainMeshHeightAt) —
     // the analytic height left them floating on slopes.
     const h = terrainMeshHeightAt(x, z);
@@ -446,9 +449,9 @@ export function createIsland(scene: Scene): IslandResult {
 
   // ---------- Lighthouse (east headland, h ~2.6 m, gentle slope) ----------
   {
-    const lx = 1010;
-    const lz = -60;
-    const baseY = heightAt(lx, lz);
+    const lx = 1560;
+    const lz = -90;
+    const baseY = terrainMeshHeightAt(lx, lz);
     const white = createMaterial(scene, "lighthouse-white", 0.92, 0.92, 0.9);
     const red = createMaterial(scene, "lighthouse-red", 0.75, 0.2, 0.16);
     const shaft = MeshBuilder.CreateCylinder(

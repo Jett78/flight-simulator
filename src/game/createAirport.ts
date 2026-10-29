@@ -100,27 +100,27 @@ export function createAirport(scene: Scene): AirportResult {
   // Slightly lighter mowed strip around the runway for definition
   box(
     "mowed-strip",
-    { width: 46, height: 0.04, depth: 260 },
+    { width: 52, height: 0.04, depth: 340 },
     [0, 0.02, 0],
     createMaterial(scene, "grass-light", 0.4, 0.64, 0.33),
     { receive: true },
   );
 
   // ---------- Runway (along Z) ----------
-  box("runway", { width: 18, height: 0.16, depth: 220 }, [0, 0.08, 0], asphalt);
+  box("runway", { width: 18, height: 0.16, depth: 300 }, [0, 0.08, 0], asphalt);
 
   // Edge lines
   for (const side of [-1, 1]) {
     box(
       `runway-edge-${side}`,
-      { width: 0.5, height: 0.18, depth: 216 },
+      { width: 0.5, height: 0.18, depth: 296 },
       [side * 8.2, 0.09, 0],
       markingWhite,
     );
   }
 
   // Centreline dashes
-  for (let z = -96; z <= 96; z += 16) {
+  for (let z = -136; z <= 136; z += 16) {
     box(
       `centreline-${z}`,
       { width: 0.7, height: 0.18, depth: 8 },
@@ -136,7 +136,7 @@ export function createAirport(scene: Scene): AirportResult {
       box(
         `threshold-${end}-${i}`,
         { width: 1.1, height: 0.18, depth: 10 },
-        [i * 2.2, 0.09, end * 102],
+        [i * 2.2, 0.09, end * 142],
         markingWhite,
       );
     }
@@ -184,9 +184,91 @@ export function createAirport(scene: Scene): AirportResult {
   box("tower-cab", { width: 9, height: 3.6, depth: 9 }, [30, 22.8, -62], glass, { cast: true });
   box("tower-roof", { width: 10, height: 0.6, depth: 10 }, [30, 24.9, -62], roofDark, { cast: true });
 
+  // ---------- Phase 12: a busier airport ----------
+  // Third hangar (west, south of hangar B)
+  hangar("hangar-c", -70, -88, 24, 20, 9.5);
+
+  // Cargo terminal (east, south of the passenger terminal)
+  box("cargo", { width: 20, height: 8, depth: 16 }, [64, 4, -30], facadeMat, { cast: true });
+  box("cargo-roof", { width: 22, height: 0.7, depth: 18 }, [64, 8.35, -30], roofDark, { cast: true });
+  box("cargo-glass", { width: 20.3, height: 2.2, depth: 11 }, [64, 5.2, -30], glass);
+  // Freight containers stacked by the cargo apron
+  const containerSpots: Array<[number, number, number, StandardMaterial]> = [
+    [62, -52, 0, roofHangar],
+    [62, -58.5, 0, wallLight],
+    [69, -55, Math.PI / 2, roofHangar],
+  ];
+  containerSpots.forEach(([x, z, rot, mat], i) => {
+    const c = box(`container-${i}`, { width: 6, height: 2.6, depth: 2.4 }, [x, 1.3, z], mat, { cast: true });
+    c.rotation.y = rot;
+  });
+
+  // Terminal 2: a taller second block east of the office
+  box("terminal-2", { width: 14, height: 13, depth: 12 }, [60, 6.5, 18], facadeMat, { cast: true });
+  box("terminal-2-roof", { width: 16, height: 0.7, depth: 14 }, [60, 13.35, 18], roofDark, { cast: true });
+
+  // Fire station (east, far south)
+  box("fire-station", { width: 14, height: 5, depth: 10 }, [54, 2.5, -94], wallLight, { cast: true });
+  box("fire-station-roof", { width: 15.5, height: 0.6, depth: 11.5 }, [54, 5.3, -94], roofDark, { cast: true });
+  box("fire-station-door", { width: 0.3, height: 3.4, depth: 7 }, [46.9, 1.7, -94], doorDark);
+
+  // Fuel depot (west of the hangars): three standing tanks + pump house
+  const tankMat = roofHangar;
+  [-28, -37, -46].forEach((z, i) => {
+    const tank = MeshBuilder.CreateCylinder(
+      `fuel-tank-${i}`,
+      { diameter: 4.2, height: 5.5, tessellation: 14 },
+      scene,
+    );
+    tank.position = new Vector3(-100, 2.75, z);
+    tank.material = tankMat;
+    tank.receiveShadows = true;
+    casters.push(tank);
+    receivers.push(tank);
+  });
+  box("fuel-pump-house", { width: 6, height: 3, depth: 5 }, [-100, 1.5, -18], wallLight, { cast: true });
+
+  // Radar tower (far east): base, pole and a scanner bar
+  box("radar-base", { width: 4.5, height: 1.6, depth: 4.5 }, [88, 0.8, -64], concrete, { cast: true });
+  const radarPole = MeshBuilder.CreateCylinder(
+    "radar-pole",
+    { diameter: 1.4, height: 13, tessellation: 10 },
+    scene,
+  );
+  radarPole.position = new Vector3(88, 7.3, -64);
+  radarPole.material = wallLight;
+  casters.push(radarPole);
+  const radarBar = box("radar-bar", { width: 8, height: 0.9, depth: 1.8 }, [88, 14.2, -64], roofDark, { cast: true });
+  radarBar.rotation.y = 0.6;
+
+  // Windsock by the runway's south end (pole + orange cone)
+  const sockPole = MeshBuilder.CreateCylinder(
+    "windsock-pole",
+    { diameter: 0.24, height: 6, tessellation: 8 },
+    scene,
+  );
+  sockPole.position = new Vector3(30, 3, 118);
+  sockPole.material = roofHangar;
+  casters.push(sockPole);
+  const sock = MeshBuilder.CreateCylinder(
+    "windsock",
+    { diameterTop: 0.25, diameterBottom: 0.9, height: 2.4, tessellation: 10 },
+    scene,
+  );
+  sock.position = new Vector3(31.2, 5.6, 118);
+  sock.rotation.z = -1.35;
+  sock.material = createMaterial(scene, "windsock-orange", 0.92, 0.45, 0.1, { emissive: [0.25, 0.1, 0.01] });
+  casters.push(sock);
+
+  // Apron edge lights (small emissive blocks along the apron's east edge)
+  for (let z = 10; z <= 52; z += 6) {
+    box(`apron-light-${z}`, { width: 0.35, height: 0.35, depth: 0.35 }, [-50, 0.3, z], markingYellow);
+  }
+
   // ---------- Simple trees for scale (cones + trunks) ----------
   const treeSpots: Array<[number, number]> = [
     [58, -70], [66, -38], [58, 28], [70, 52], [-102, 62], [-104, -6], [-100, -72], [52, 74],
+    [92, -20], [96, 42], [-114, 28], [-116, -44], [86, 86], [-98, 88],
   ];
   treeSpots.forEach(([x, z], i) => {
     // Ground on the island surface: these trees predate the island

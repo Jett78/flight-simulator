@@ -5,7 +5,7 @@ import { SEA_LEVEL, terrainMeshHeightAt } from "./createIsland";
  * Runway geometry — the single source of truth (Phase 7).
  *
  * Matches the visual runway built in createAirport.ts: an 18 m wide,
- * 220 m long asphalt box centred on the origin, top surface at
+ * 300 m long asphalt box centred on the origin, top surface at
  * y = 0.16, long axis along Z (takeoff/landing heading is -Z, the
  * aircraft's start direction). Anything that needs to know "where is
  * the runway" reads it from here instead of hard-coding coordinates.
@@ -13,8 +13,8 @@ import { SEA_LEVEL, terrainMeshHeightAt } from "./createIsland";
 export const RUNWAY = {
   /** Half-width (m): the asphalt spans x in [-9, 9]. */
   halfWidth: 9,
-  /** Half-length (m): the asphalt spans z in [-110, 110]. */
-  halfLength: 110,
+  /** Half-length (m): the asphalt spans z in [-150, 150]. */
+  halfLength: 150,
   /** Height of the asphalt surface above the terrain pad. */
   surfaceY: 0.16,
   centerX: 0,

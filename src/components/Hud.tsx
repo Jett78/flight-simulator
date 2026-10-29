@@ -68,7 +68,7 @@ const VSI_TRAVEL = 52; // px from centre to full-scale
 
 // Mission minimap: world metres -> SVG viewBox units (0..100).
 // North (-Z) is up, so screen y grows with world +Z (south).
-const MAP_EXTENT = 900;
+const MAP_EXTENT = 1750; // Phase 12: the island grew to ~3.2 km across
 const mapCoord = (v: number) => ((v + MAP_EXTENT) / (MAP_EXTENT * 2)) * 100;
 
 function compassLabel(deg: number): string {
@@ -519,7 +519,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 11 · PERFORMANCE</div>
+        <div className="hud-badge">PHASE 12 · BIGGER WORLD</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -630,6 +630,10 @@ export function Hud({
                 <strong>C</strong> camera · <strong>R</strong> reset aircraft ·{" "}
                 <strong>P</strong> pause
               </li>
+              <li>
+                <strong>Mouse drag</strong> on the view — look around
+                (Reset view recentres)
+              </li>
               <li className="hud-help-tip">
                 Hold Shift — at ~100 km/h pull S to take off. Land back on
                 the runway gently: sink under ~2.5 m/s, wings level.
@@ -694,17 +698,17 @@ export function Hud({
             <span className="hud-map-north">N ↑</span>
           </div>
           <svg className="hud-map-svg" viewBox="0 0 100 100" aria-hidden="true">
-            <circle cx="50" cy="50" r="60" className="hud-map-island" />
+            <circle cx="50" cy="50" r="46" className="hud-map-island" />
             <line
               x1="50"
-              y1={mapCoord(-110)}
+              y1={mapCoord(-150)}
               x2="50"
-              y2={mapCoord(110)}
+              y2={mapCoord(150)}
               className="hud-map-runway"
             />
             <polyline
               points={[
-                `${mapCoord(0)},${mapCoord(68)}`,
+                `${mapCoord(0)},${mapCoord(105)}`,
                 ...CHECKPOINTS.map((cp) => `${mapCoord(cp.x)},${mapCoord(cp.z)}`),
               ].join(" ")}
               className="hud-map-route"
@@ -723,7 +727,7 @@ export function Hud({
             })}
             <g
               ref={mapPlaneEl}
-              transform={`translate(${mapCoord(0)} ${mapCoord(68)}) rotate(0)`}
+              transform={`translate(${mapCoord(0)} ${mapCoord(105)}) rotate(0)`}
             >
               <path d="M 0 -3.4 L 2.2 2.8 L 0 1.5 L -2.2 2.8 Z" className="hud-map-plane" />
             </g>

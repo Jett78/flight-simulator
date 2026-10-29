@@ -20,6 +20,7 @@ import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
 import { createGroundSampler } from "./runway";
+import type { GroundSampler } from "./AircraftController";
 
 /**
  * Coordinate convention (shared by the airplane model, the controller
@@ -28,7 +29,7 @@ import { createGroundSampler } from "./runway";
 
 /** Runway centreline, near the southern threshold, nose pointing down -Z
  *  so ~178m of runway lies ahead. y = runway top (0.16) + gear depth (2.25). */
-const AIRCRAFT_START = new Vector3(0, 2.41, 68);
+const AIRCRAFT_START = new Vector3(0, 2.41, 105); // 300 m runway: 195 m of asphalt ahead
 
 /**
  * Physics runs at a fixed 120 Hz timestep through an accumulator, so
@@ -57,6 +58,8 @@ interface CameraMode {
  * (+Z) and above (+Y) the aircraft, except Cockpit, which sits at the
  * pilot's head and is damped so hard it is effectively rigid.
  */
+const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 const CAMERA_MODES: CameraMode[] = [
   {
     name: "Chase",
@@ -121,6 +124,17 @@ export class FlightScene {
   private readonly smoothedTarget = new Vector3();
   private readonly onResize = () => this.engine.resize();
   private cameraModeIndex = 0;
+  // Phase 12 drag-look: orbit offsets (radians) applied to the
+  // camera rig in aircraft-local space; zero = the mode's default
+  // view. Driven by pointer drags on the canvas (see
+  // attachDragLook), cleared by resetCamera().
+  private viewYaw = 0;
+  private viewPitch = 0;
+  private readonly _orbitQuat = new Quaternion();
+  private readonly _orbitVec = new Vector3();
+  private dragLookDispose: (() => void) | null = null;
+  /** Camera-only ground sampler: keeps an orbited camera out of the terrain. */
+  private readonly cameraSampler: GroundSampler = createGroundSampler();
   private telemetryTimer = 0;
   private physicsAccumulator = 0;
   private checkpointMarkers: CheckpointMarkerHandle | null = null;
@@ -188,9 +202,10 @@ export class FlightScene {
 
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
     this.camera.minZ = 0.1;
-    this.camera.maxZ = 5200; // island + sky dome (radius 4200) in view
+    this.camera.maxZ = 8000; // island + sky dome (radius 6300) in view
     this.camera.fov = 0.82;
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
+    this.attachDragLook();
 
     // Phase 11: opt-in performance overlay (?perf=1) — FPS, draw
     // calls, active meshes/triangles. Zero cost when absent: the
@@ -369,11 +384,37 @@ export class FlightScene {
     }
     Matrix.FromQuaternionToRef(this._quat, this._rotMatrix);
     const mode = this.cameraMode;
+    // Phase 12 drag-look: rotate the rig's local offsets by the
+    // player's orbit before the aircraft's own rotation. Chase
+    // modes rotate position + target together (the camera swings
+    // around the aircraft); Cockpit rotates only the look target
+    // (a head turn — the eye stays seated).
+    const orbit = this.viewYaw !== 0 || this.viewPitch !== 0;
+    if (orbit) {
+      Quaternion.RotationYawPitchRollToRef(this.viewYaw, this.viewPitch, 0, this._orbitQuat);
+    }
     // Offsets rotated into world space (rotation only, no translation)
-    Vector3.TransformNormalToRef(mode.offset, this._rotMatrix, outPos);
+    if (orbit && mode.name !== "Cockpit") {
+      mode.offset.rotateByQuaternionToRef(this._orbitQuat, this._orbitVec);
+      Vector3.TransformNormalToRef(this._orbitVec, this._rotMatrix, outPos);
+    } else {
+      Vector3.TransformNormalToRef(mode.offset, this._rotMatrix, outPos);
+    }
     outPos.addInPlace(node.position);
-    Vector3.TransformNormalToRef(mode.lookOffset, this._rotMatrix, outTarget);
+    if (orbit) {
+      mode.lookOffset.rotateByQuaternionToRef(this._orbitQuat, this._orbitVec);
+      Vector3.TransformNormalToRef(this._orbitVec, this._rotMatrix, outTarget);
+    } else {
+      Vector3.TransformNormalToRef(mode.lookOffset, this._rotMatrix, outTarget);
+    }
     outTarget.addInPlace(node.position);
+    // Never let an orbited chase camera sink below the ground it
+    // is looking at (a hard pitch drag at low altitude could
+    // otherwise put it inside a hillside).
+    if (mode.name !== "Cockpit") {
+      const groundY = this.cameraSampler(outPos.x, outPos.z).height;
+      if (outPos.y < groundY + 1.1) outPos.y = groundY + 1.1;
+    }
   }
 
   private updateChaseCamera(dt: number): void {
@@ -388,6 +429,8 @@ export class FlightScene {
 
   /** Snap the camera back to the current mode's pose, instantly. */
   resetCamera(): void {
+    this.viewYaw = 0;
+    this.viewPitch = 0;
     this.computeChasePose(this._desiredPos, this._desiredTarget);
     this.camera.position.copyFrom(this._desiredPos);
     this.smoothedTarget.copyFrom(this._desiredTarget);
@@ -412,11 +455,11 @@ export class FlightScene {
     // Cover the airport (runway is 220 long) with the shadow frustum
     sun.autoCalcShadowZBounds = true;
     sun.shadowMinZ = 10;
-    sun.shadowMaxZ = 260;
-    (sun as unknown as { orthoLeft: number }).orthoLeft = -140;
-    (sun as unknown as { orthoRight: number }).orthoRight = 140;
-    (sun as unknown as { orthoTop: number }).orthoTop = 140;
-    (sun as unknown as { orthoBottom: number }).orthoBottom = -140;
+    sun.shadowMaxZ = 340;
+    (sun as unknown as { orthoLeft: number }).orthoLeft = -200;
+    (sun as unknown as { orthoRight: number }).orthoRight = 200;
+    (sun as unknown as { orthoTop: number }).orthoTop = 200;
+    (sun as unknown as { orthoBottom: number }).orthoBottom = -200;
 
     const shadows = new ShadowGenerator(2048, sun);
     shadows.useBlurExponentialShadowMap = true;
@@ -469,10 +512,62 @@ export class FlightScene {
   }
 
   /** Stop the render loop and release all GPU / engine resources. */
+  /**
+   * Phase 12: click-drag on the canvas orbits the camera (the
+   * "grab the view" control other flight games use). Dragging
+   * right turns the view right, dragging down looks down; the
+   * offsets persist until Reset view / R / a cockpit mode change
+   * recentres them. Pointer capture keeps the drag alive outside
+   * the canvas, and only the primary button on the canvas itself
+   * starts one, so HUD buttons never trigger it.
+   */
+  private attachDragLook(): void {
+    const canvas = this.engine.getRenderingCanvas();
+    if (!canvas) return;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 || dragging) return;
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+      canvas.style.cursor = "grabbing";
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      this.viewYaw = clampNum(this.viewYaw + dx * 0.0052, -2.6, 2.6);
+      this.viewPitch = clampNum(this.viewPitch - dy * 0.0042, -0.55, 0.95);
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      canvas.style.cursor = "";
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+    this.dragLookDispose = () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+    };
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     window.removeEventListener("resize", this.onResize);
+    this.dragLookDispose?.();
+    this.dragLookDispose = null;
     this.perfInstrumentation?.dispose();
     this.perfInstrumentation = null;
     this.perfOverlay?.remove();

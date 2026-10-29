@@ -8,7 +8,54 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
-## Phase 11 — Performance & reliability (current)
+## Phase 12 — Bigger world, bigger airport, mouse look (current)
+
+Jeet's live feedback: flying straight you ran out of island in
+seconds and ditched in the sea, the runway and airport felt
+small, and there was no way to look around with the mouse.
+
+**Bigger world (~1.5×).** The island grew from ~2.2 km to
+~3.2 km across: terrain mesh 2,800 → 4,200 m (subdivisions
+200 → 250), coast radius ~1,080 → ~1,620 m, and the peaks,
+hills, village and lighthouse all moved outward with it. Tree
+scatter range widened (cap 850 → 1,150 trees), sky dome
+8,400 → 12,600 m, ocean 9,000 → 14,000 m, camera far plane
+5,200 → 8,000 m — flying straight now gives you minutes of
+island and sea room instead of an instant swim.
+
+**Bigger airport.** Runway lengthened 220 → 300 m
+(`RUNWAY.halfLength` 110 → 150 in `runway.ts`; the visuals in
+`createAirport.ts` match), the flattened airport pad grew with
+it, spawn moved to z = 105 (195 m of runway ahead) and the
+shadow camera widened to ±200 m. New structures: a third
+hangar, a cargo terminal with freight containers, a taller
+Terminal 2 block, a fire station, a fuel depot (three tanks
+plus a pump house), a radar tower, a windsock, apron edge
+lights and six more airport trees.
+
+**Mouse look.** Click-drag on the canvas orbits the camera
+(`FlightScene.attachDragLook`): in the chase views the camera
+position and target swing together around the aircraft; in
+Cockpit only the look target rotates — a head turn. Yaw clamps
+at ±2.6 rad, pitch at −0.55…0.95 rad, and Reset view, **R** or
+switching into Cockpit recentres the view. Implementation
+note: the offsets are rotated with
+`Vector3.rotateByQuaternionToRef` — passing a `Quaternion` to
+`TransformNormalToRef` throws, which testing caught before it
+shipped.
+
+**Missions still fit.** Checkpoint clearances over the new
+terrain measure 62–101 m (every ring comfortably clear), and
+the mission minimap was rescaled to the bigger island
+(`MAP_EXTENT` 1,750, island circle r = 46).
+
+**Verify:** all headless suites pass — physics, ground (the
+full-circuit test now flies the whole new island), missions,
+audio, reliability and the worldbuild scene construction —
+plus screenshot verification in a real browser, including the
+drag interaction itself.
+
+## Phase 11 — Performance, bug fixes, reliability
 
 An audit-and-fix phase (no new features), plus the scenery
 corrections from Jeet's live feedback.
@@ -410,6 +457,7 @@ rendering and UI.
 | **Space** | Fast throttle cut (hold) |
 | **C** | Cycle camera: Chase → Chase far → Cockpit |
 | **R** | Reset aircraft to the runway start (position, level, 0 speed/throttle) |
+| **Mouse drag** | Look around — drag on the view to orbit the camera (a head turn in Cockpit); Reset view recentres (added in Phase 12) |
 
 Notes:
 
@@ -519,8 +567,8 @@ Key design rules:
   and is read by the terrain mesh, the trees, the ground sampler and
   the checkpoint-clearance test.
 - **Coordinate convention everywhere:** forward = **−Z**, up = **+Y**,
-  right = **+X**. The aircraft spawns at (0, 2.41, 68) facing −Z with
-  178 m of the 220 m runway ahead.
+  right = **+X**. The aircraft spawns at (0, 2.41, 105) facing −Z with
+  195 m of the 300 m runway ahead.
 
 ## Code documentation
 
@@ -531,9 +579,9 @@ Key design rules:
 | `FlightScene.ts` | Engine + scene setup (sky, fog, lights, shadow-casting sun), world construction, the three cameras (chase / chase-far / adaptive cockpit), the frame loop — physics substeps at a fixed 120 Hz, camera smoothing, checkpoint-marker animation — plus resize handling and full disposal on unmount. |
 | `AircraftController.ts` | The flight model and aircraft state machine. Forces: thrust, lift, drag, gravity; stall beyond +15° / −12° angle of attack; banked turns; ground contact through an injected `GroundSampler`; touchdown judging and all crash rules; spring-loaded throttle. Deliberately decoupled from Babylon scene objects so it runs headless. |
 | `InputManager.ts` | Keyboard state for the frozen control scheme (below). Tracks held keys; the spring throttle lives in the controller, this class only reports input. |
-| `createAirport.ts` | The airfield meshes: 220 m runway with markings, taxiway, apron, hangars, terminal (with window-facade texture), office block, control tower. |
-| `createIsland.ts` | The procedural island. `heightAt(x, z)` is the analytic heightfield (coastline falloff, rolling hills, mountain peaks, flattened airport/village pads, and a kept-clear approach corridor). The terrain mesh is built from it at 200 subdivisions; `terrainMeshHeightAt` bilinearly interpolates the **rendered** surface and is what trees and the physics sampler stand on — using the analytic height instead left trees floating up to ~2 m on slopes. Also: ~850 instanced two-tier trees, the village, the lighthouse, ocean, sky dome, and vertex-colour terrain painting (sand / grass / forest / rock / snow). |
-| `runway.ts` | `RUNWAY` constants (18 m × 220 m, surface y = 0.16) and `createGroundSampler()` — answers "what is under the aircraft" (runway / terrain / water + slope) for physics and landing judging. |
+| `createAirport.ts` | The airfield meshes: 300 m runway with markings, taxiway, apron, three hangars, terminal + taller Terminal 2 (with window-facade texture), cargo terminal with freight containers, office block, control tower, fire station, fuel depot, radar tower, windsock and apron edge lights. |
+| `createIsland.ts` | The procedural island. `heightAt(x, z)` is the analytic heightfield (coastline falloff, rolling hills, mountain peaks, flattened airport/village pads, and a kept-clear approach corridor). The terrain mesh (4,200 m across) is built from it at 250 subdivisions; `terrainMeshHeightAt` bilinearly interpolates the **rendered** surface and is what trees and the physics sampler stand on — using the analytic height instead left trees floating up to ~2 m on slopes. Also: ~1,150 instanced two-tier trees, the village, the lighthouse, ocean, sky dome, and vertex-colour terrain painting (sand / grass / forest / rock / snow). |
+| `runway.ts` | `RUNWAY` constants (18 m × 300 m, surface y = 0.16) and `createGroundSampler()` — answers "what is under the aircraft" (runway / terrain / water + slope) for physics and landing judging. |
 | `aircraftModel.ts` | Loads the Cesium Air glTF asynchronously and auto-fits it by **measurement** (length, span, ground offset, nose direction from the propeller nodes). Any load failure falls back to the primitive placeholder; the aircraft stays hidden until exactly one model is ready, so there is never a double aircraft or a flash of the wrong one. |
 | `createAirplane.ts` | The placeholder aircraft built from Babylon primitives (fallback + spawn pose). |
 | `checkpointMarkers.ts` | Checkpoint Flight guidance visuals: the pulsing gold beacon pillar over the next ring, the route ribbon through all five rings (gold = active leg, green = flown, blue = ahead), larger state-coloured rings, and billboarded number badges. Fog is disabled on these materials so guidance stays readable at distance. |
@@ -564,7 +612,8 @@ Key design rules:
 - **Controls (frozen scheme):** W = nose down, S = nose up, A/D =
   bank, Q/E = yaw, hold **Shift** = throttle up (spring-loaded —
   release and it decays to zero), **Space** = fast throttle cut,
-  **C** = camera, **P** = pause, **R** = reset.
+  **C** = camera, **P** = pause, **R** = reset, **mouse drag** on
+  the view = look around (Reset view recentres).
 
 ## Project structure
 
