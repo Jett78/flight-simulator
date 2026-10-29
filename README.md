@@ -45,14 +45,20 @@ blur/tab-hide key clearing, listener disposal, corrupt
 `localStorage` fallbacks for audio prefs and mission records,
 and crash → reset → full control (throttle responds again).
 
-**Scenery (from the 0.10.2 live-check failure):** tree/aircraft
-grounding now interpolates the exact rendered triangle
-(Babylon's ground-builder splits each quad SE→NW — verified
-against the installed source), and real hills were added near
-the field (east/west/south-east high ground of 60–85 m plus
-stronger rolling hills), since the distant peaks read as a flat
-strip from the runway. Checkpoint clearances re-verified
-(≥ 27.5 m); the full-circuit ground test still passes.
+**Scenery — the real root cause (0.11.1):** the terrain mesh
+was created WITHOUT `updatable: true`, then its position buffer
+was rewritten with the heightfield. The CPU-side vertex data
+updated (so physics, raycasts and every headless test saw hills),
+but the GPU kept the original FLAT grid — in the browser the
+island rendered flat while trees stood at true terrain heights:
+the "floating trees / missing hills" Jeet kept reporting. One
+flag (`updatable: true` on the terrain) fixed it; verified by
+actual screenshots (snow-capped peaks, hills, trees standing on
+slopes). Lesson recorded: NullEngine checks cannot catch
+GPU-buffer bugs — look at rendered pixels. The exact-triangle
+grounding interpolation and the near-field hills (60–85 m,
+tree-covered tops) from the earlier attempts remain, and help
+now that the terrain actually renders.
 
 ## Phase 10 — Sound
 

@@ -293,6 +293,11 @@ export function createIsland(scene: Scene): IslandResult {
       height: TERRAIN_SIZE,
       subdivisionsX: TERRAIN_SUBDIVISIONS,
       subdivisionsY: TERRAIN_SUBDIVISIONS,
+      // The heightfield displacement below rewrites the position
+      // buffer after creation — the mesh must be updatable or the
+      // GPU keeps the flat grid (the CPU-side data still updates,
+      // which is why headless checks could not see this).
+      updatable: true,
     },
     scene,
   );
@@ -364,7 +369,7 @@ export function createIsland(scene: Scene): IslandResult {
   );
   canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.2, 0.45, 0.19);
 
-  const TREE_ATTEMPTS = 2100;
+  const TREE_ATTEMPTS = 2400;
   let placed = 0;
   for (let i = 0; i < TREE_ATTEMPTS && placed < 850; i++) {
     const x = (rng() * 2 - 1) * 1030;
@@ -372,7 +377,7 @@ export function createIsland(scene: Scene): IslandResult {
     // Sit trees on the RENDERED surface (see terrainMeshHeightAt) —
     // the analytic height left them floating on slopes.
     const h = terrainMeshHeightAt(x, z);
-    if (h < 2.4 || h > 58) continue; // beaches / high rock stay bare
+    if (h < 2.4 || h > 88) continue; // beaches / bare rock stay bare; hilltops DO get trees (Jeet: "above them should be trees")
     if (airportBoxDistance(x, z) < 46) continue; // keep the airfield clear
     if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 12) continue;
     const slope =

@@ -5,6 +5,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import type { Scene } from "@babylonjs/core/scene";
+import { terrainMeshHeightAt } from "./createIsland";
 import { createMaterial } from "./materials";
 
 export interface AirportResult {
@@ -188,12 +189,16 @@ export function createAirport(scene: Scene): AirportResult {
     [58, -70], [66, -38], [58, 28], [70, 52], [-102, 62], [-104, -6], [-100, -72], [52, 74],
   ];
   treeSpots.forEach(([x, z], i) => {
+    // Ground on the island surface: these trees predate the island
+    // (Phase 1 flat ground at y=0) and their trunks ended up buried
+    // under the terrain pad once the island arrived.
+    const groundY = terrainMeshHeightAt(x, z) - 0.15;
     const trunk = MeshBuilder.CreateCylinder(
       `trunk-${i}`,
       { diameter: 0.7, height: 2.6, tessellation: 7 },
       scene,
     );
-    trunk.position = new Vector3(x, 1.3, z);
+    trunk.position = new Vector3(x, groundY + 1.3, z);
     trunk.material = trunkMat;
     casters.push(trunk);
 
@@ -202,7 +207,7 @@ export function createAirport(scene: Scene): AirportResult {
       { diameterTop: 0.2, diameterBottom: 4.4, height: 6.5, tessellation: 9 },
       scene,
     );
-    foliage.position = new Vector3(x, 5.6, z);
+    foliage.position = new Vector3(x, groundY + 5.6, z);
     foliage.material = foliageMat;
     casters.push(foliage);
   });
