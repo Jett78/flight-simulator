@@ -672,3 +672,159 @@
   color: rgba(255, 255, 255, 0.55);
   letter-spacing: 0.08em;
 }
+
+/* --- Phase 9 missions --- */
+.hud-missions {
+  pointer-events: auto;
+  padding: 10px;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-missions-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 2px 4px 4px;
+}
+
+.hud-mission-row {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #dfe9f5;
+  cursor: pointer;
+  font: inherit;
+}
+
+.hud-mission-row:hover {
+  border-color: rgba(255, 209, 102, 0.6);
+}
+
+.hud-mission-row.is-active {
+  border-color: rgba(255, 209, 102, 0.85);
+  background: rgba(255, 209, 102, 0.1);
+}
+
+.hud-mission-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.hud-mission-best {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd166;
+  letter-spacing: 0.04em;
+}
+
+.hud-mission-blurb {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.hud-missions-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 2px 4px 0;
+}
+
+.hud-objective {
+  position: absolute;
+  top: 148px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 16px;
+  border-radius: 999px;
+  background: rgba(8, 18, 32, 0.72);
+  border: 1px solid rgba(255, 209, 102, 0.55);
+  color: #dfe9f5;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.hud-objective-name {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.hud-objective-text {
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-objective-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.hud-result {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 34px;
+  pointer-events: auto;
+  text-align: center;
+}
+
+.hud-result-title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #7ee2a8;
+}
+
+.hud-result[data-status="failed"] .hud-result-title {
+  color: #ff8a8a;
+}
+
+.hud-result-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.05em;
+}
+
+.hud-result-stats {
+  display: flex;
+  gap: 18px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.hud-result-stats strong {
+  color: #ffd166;
+}
+
+.hud-result-reason {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 340px;
+}
+
+.hud-result-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}

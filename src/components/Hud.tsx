@@ -1,5 +1,19 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { FlightState } from "../game/AircraftController";
+import {
+  CHECKPOINTS,
+  MISSION_INFO,
+  MissionRun,
+  TAKEOFF_TARGET_ALTITUDE,
+  checkpointVisuals,
+  formatTime,
+  loadRecords,
+  recordCompletion,
+  recordStart,
+  type CheckpointVisual,
+  type MissionId,
+  type MissionRecords,
+} from "../game/missions";
 import "./Hud.css";
 
 /**
@@ -25,6 +39,17 @@ interface HudProps {
   onTogglePause: () => void;
   onResetAircraft: () => void;
   onResetView: () => void;
+  /** Phase 9: show/hide the 3D checkpoint rings. */
+  setCheckpoints: (visuals: CheckpointVisual[]) => void;
+}
+
+interface RunSummary {
+  id: MissionId;
+  status: "complete" | "failed";
+  score: number;
+  time: number;
+  quality: "smooth" | "hard" | null;
+  failReason: string;
 }
 
 // --- Instrument geometry -------------------------------------------------
@@ -91,8 +116,42 @@ export function Hud({
   onTogglePause,
   onResetAircraft,
   onResetView,
+  setCheckpoints,
 }: HudProps) {
   const [helpOpen, setHelpOpen] = useState(false);
+
+  // Phase 9 mission UI state (discrete changes only — per-frame
+  // objective text is written through refs by the rAF loop below).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeMission, setActiveMission] = useState<MissionId | null>(null);
+  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+  const [records, setRecords] = useState<MissionRecords>(() => loadRecords());
+  const runRef = useRef<MissionRun | null>(null);
+  const pausedRef = useRef(paused);
+  const setCheckpointsRef = useRef(setCheckpoints);
+  setCheckpointsRef.current = setCheckpoints;
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  const startMission = (id: MissionId) => {
+    onResetAircraft();
+    runRef.current = new MissionRun(id);
+    setRecords((r) => recordStart(r, id));
+    setActiveMission(id);
+    setRunSummary(null);
+    setMenuOpen(false);
+    setCheckpoints(checkpointVisuals(runRef.current));
+  };
+
+  const endMission = () => {
+    runRef.current = null;
+    setActiveMission(null);
+    setRunSummary(null);
+    setMenuOpen(false);
+    setCheckpoints([]);
+  };
 
   // Instrument node refs — written directly by the rAF loop below.
   const spdStrip = useRef<HTMLDivElement>(null);
@@ -114,6 +173,7 @@ export function Hud({
   const statusTextEl = useRef<HTMLSpanElement>(null);
   const crashEl = useRef<HTMLDivElement>(null);
   const crashReasonEl = useRef<HTMLDivElement>(null);
+  const objectiveTextEl = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -135,6 +195,12 @@ export function Hud({
     let liftoffAt = 0;
     let lastStatusKey = "";
     let crashShown = false;
+
+    // Phase 9 mission bookkeeping
+    let lastFrameAt = 0;
+    let lastObjectiveKey = "";
+    let lastVisualKey = "";
+    let handledRun: MissionRun | null = null;
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -254,6 +320,56 @@ export function Hud({
           crashReasonEl.current.textContent = s.crashReason;
         }
       }
+
+      // Phase 9: step the active mission against the real flight
+      // state. The timer freezes while paused. Discrete outcomes
+      // (complete/failed) are handed to React state exactly once.
+      const run = runRef.current;
+      if (run) {
+        const dtMs = lastFrameAt > 0 ? now - lastFrameAt : 0;
+        lastFrameAt = now;
+        run.step(s, pausedRef.current ? 0 : Math.min(dtMs / 1000, 0.1));
+
+        const visualKey = `${run.id}:${run.nextIndex}:${run.status}`;
+        if (visualKey !== lastVisualKey) {
+          lastVisualKey = visualKey;
+          setCheckpointsRef.current(checkpointVisuals(run));
+        }
+
+        if (run.status === "active") {
+          let objective = "";
+          if (run.id === "checkpoints") {
+            const dist = run.distanceToNext(s);
+            objective = `Ring ${Math.min(run.nextIndex + 1, CHECKPOINTS.length)}/${CHECKPOINTS.length}${dist !== null ? ` · ${Math.round(dist)} m` : ""} · ⏱ ${formatTime(run.elapsed)}`;
+          } else if (run.id === "takeoff") {
+            objective = `Altitude ${Math.max(0, Math.round(s.altitude))} / ${TAKEOFF_TARGET_ALTITUDE} m · ⏱ ${formatTime(run.elapsed)}`;
+          } else {
+            objective = `${s.grounded ? "Take off, then land on the runway" : "Land on the runway"} · ⏱ ${formatTime(run.elapsed)}`;
+          }
+          if (objective !== lastObjectiveKey) {
+            lastObjectiveKey = objective;
+            if (objectiveTextEl.current) objectiveTextEl.current.textContent = objective;
+          }
+        } else if (handledRun !== run) {
+          handledRun = run;
+          if (run.status === "complete") {
+            setRecords((r) => recordCompletion(r, run.id, run.score));
+          }
+          setRunSummary({
+            id: run.id,
+            status: run.status,
+            score: run.score,
+            time: run.elapsed,
+            quality: run.landingQuality,
+            failReason: run.failReason,
+          });
+        }
+      } else {
+        lastFrameAt = 0;
+        handledRun = null;
+        lastVisualKey = "";
+        lastObjectiveKey = "";
+      }
     };
 
     raf = requestAnimationFrame(tick);
@@ -267,7 +383,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 8 · MODELS & MATERIALS</div>
+        <div className="hud-badge">PHASE 9 · MISSIONS</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -297,7 +413,48 @@ export function Hud({
           >
             ? Controls
           </button>
+          <button
+            type="button"
+            className="hud-btn"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            🏁 Missions
+          </button>
         </div>
+        {menuOpen && (
+          <aside className="hud-panel hud-missions" aria-label="Mission selection">
+            <div className="hud-missions-title">Missions</div>
+            <button
+              type="button"
+              className={`hud-mission-row${activeMission === null ? " is-active" : ""}`}
+              onClick={endMission}
+            >
+              <span className="hud-mission-name">✈ Free Flight</span>
+              <span className="hud-mission-blurb">No objectives — just fly.</span>
+            </button>
+            {(Object.keys(MISSION_INFO) as MissionId[]).map((id) => {
+              const rec = records[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`hud-mission-row${activeMission === id ? " is-active" : ""}`}
+                  onClick={() => startMission(id)}
+                >
+                  <span className="hud-mission-name">
+                    {MISSION_INFO[id].name}
+                    {rec && rec.best > 0 ? (
+                      <span className="hud-mission-best">best {rec.best}</span>
+                    ) : null}
+                  </span>
+                  <span className="hud-mission-blurb">{MISSION_INFO[id].blurb}</span>
+                </button>
+              );
+            })}
+            <div className="hud-missions-note">Starting a mission resets the aircraft.</div>
+          </aside>
+        )}
         {helpOpen && (
           <aside className="hud-panel hud-help" aria-label="Flight controls">
             <ul>
@@ -337,6 +494,63 @@ export function Hud({
       <div ref={statusEl} className="hud-status" data-tone="info" style={{ opacity: 0 }}>
         <span ref={statusTextEl} />
       </div>
+
+      {/* Phase 9 in-flight objective display */}
+      {activeMission && !runSummary && (
+        <div className="hud-objective">
+          <span className="hud-objective-name">🎯 {MISSION_INFO[activeMission].name}</span>
+          <span ref={objectiveTextEl} className="hud-objective-text" />
+          <button
+            type="button"
+            className="hud-btn hud-objective-btn"
+            onClick={() => startMission(activeMission)}
+          >
+            ↻ Restart
+          </button>
+          <button type="button" className="hud-btn hud-objective-btn" onClick={endMission}>
+            ✕ End
+          </button>
+        </div>
+      )}
+
+      {/* Phase 9 mission result card */}
+      {runSummary && (
+        <div className="hud-panel hud-result" data-status={runSummary.status}>
+          <div className="hud-result-title">
+            {runSummary.status === "complete" ? "✓ MISSION COMPLETE" : "✕ MISSION FAILED"}
+          </div>
+          <div className="hud-result-name">{MISSION_INFO[runSummary.id].name}</div>
+          {runSummary.status === "complete" ? (
+            <div className="hud-result-stats">
+              <span>
+                Score <strong>{runSummary.score}</strong>
+              </span>
+              <span>
+                Time <strong>{formatTime(runSummary.time)}</strong>
+              </span>
+              {runSummary.quality && (
+                <span>
+                  Landing <strong>{runSummary.quality}</strong>
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="hud-result-reason">{runSummary.failReason}</div>
+          )}
+          <div className="hud-result-actions">
+            <button
+              type="button"
+              className="hud-btn"
+              onClick={() => startMission(runSummary.id)}
+            >
+              ↻ Restart mission
+            </button>
+            <button type="button" className="hud-btn" onClick={endMission}>
+              Free flight
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Phase 7 crash overlay */}
       <div ref={crashEl} className="hud-crash" style={{ display: "none" }}>

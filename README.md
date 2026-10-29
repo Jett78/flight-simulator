@@ -2,7 +2,48 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 8 — Models & materials (current)
+## Phase 9 — Missions (current)
+
+A simple mission system layered on the existing simulation —
+physics, controls, HUD and the Phase 7 landing detection are
+unchanged, and the landing mission is judged by that same
+touchdown system (there is no second one).
+
+- **🏁 Missions menu** (top right): Free Flight stays the default;
+  starting a mission resets the aircraft to the start line. Best
+  scores are kept locally (browser localStorage only — no backend).
+- **Checkpoint Flight:** five glowing rings around the island —
+  the next one is gold, the rest faint blue. Fly through them in
+  order; passing a later ring early does not count.
+- **Takeoff & Climb:** take off and reach 120 m, judged from the
+  real altitude and airborne state.
+- **Landing Challenge:** take off, return, and touch down on the
+  runway — the Phase 7 verdict decides: smooth/hard completes it,
+  off-runway or a crash fails it.
+- **In-flight display:** a compact objective line under the status
+  readout (next ring + distance, altitude progress, or landing
+  objective, plus the mission timer), a result card with score /
+  time / landing quality, and Restart on both the objective line
+  and the result card. The timer pauses with the sim.
+
+**Scoring rules** (identical in `src/game/missions.ts`):
+
+| Mission | Score |
+| --- | --- |
+| Checkpoint Flight | max(100, 1500 − 10 × seconds) |
+| Takeoff & Climb | max(100, 1000 − 10 × seconds) |
+| Landing Challenge | smooth 1000 / hard 600, − 5 × seconds, min 100 |
+| Any failure (crash, off-runway) | 0 — never a completion |
+
+**Verify:** open 🏁 Missions, start Checkpoint Flight — five rings
+appear (gold one ahead down the runway), the objective line counts
+rings/distance/time; take off through the gold ring and it advances.
+Takeoff & Climb completes at 120 m; the Landing Challenge completes
+only on a real runway touchdown. Headless:
+`test-headless/missions.test.ts` covers ordering, completion,
+scoring, failure and restart.
+
+## Phase 8 — Models & materials
 
 The placeholder look is upgraded without touching the flight model:
 
