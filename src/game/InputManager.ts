@@ -21,8 +21,9 @@ export const GAME_KEYS = new Set([
   "KeyE",
   "KeyC",
   "KeyR",
-  "ArrowUp",
-  "ArrowDown",
+  "ShiftLeft",
+  "ShiftRight",
+  "Space",
 ]);
 
 export class InputManager {

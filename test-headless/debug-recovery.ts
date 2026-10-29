@@ -49,14 +49,14 @@ function runUntil(keys: string[], pred: () => boolean, timeout: number) {
   }
 }
 
-run(2.5, ["KeyW"]);
+run(2.5, ["ShiftLeft"]);
 runUntil([], () => c.getState().airspeed >= 38, 30);
-runUntil(["ArrowUp"], () => c.getState().altitude > 80, 30);
+runUntil(["KeyS"], () => c.getState().altitude > 80, 30);
 run(1.5, []);
 console.log("— cutting throttle, holding S —");
-run(2.5, ["KeyS"]);
+run(2.5, ["Space"]);
 for (let t = 0; t < 14; t += 0.5) {
-  run(0.5, ["ArrowUp"], "stall", 0.5);
+  run(0.5, ["KeyS"], "stall", 0.5);
   const s = c.getState();
   if (s.stallFactor > 0.5 && s.verticalSpeed < -3) {
     console.log("  stall developed, breaking to recovery");
@@ -64,10 +64,10 @@ for (let t = 0; t < 14; t += 0.5) {
   }
 }
 console.log("— recovery: W until stall clears, then pull out with S —");
-run(2.5, ["KeyW"]); // throttle back to full while still stalled
-runUntil(["ArrowDown"], () => c.getState().stallFactor < 0.05, 2.5);
+run(2.5, ["ShiftLeft"]); // throttle back to full while still stalled
+runUntil(["KeyW"], () => c.getState().stallFactor < 0.05, 2.5);
 console.log(`  stall cleared at alt=${c.getState().altitude.toFixed(0)} v=${c.getState().airspeed.toFixed(1)} pitch=${c.getState().pitchDeg.toFixed(0)}`);
-run(1.2, ["ArrowUp"], "pullout", 0.6);
+run(1.2, ["KeyS"], "pullout", 0.6);
 run(6, [], "settle", 1);
 const s = c.getState();
 console.log(`END alt=${s.altitude.toFixed(0)} v=${s.airspeed.toFixed(1)} stall=${s.stallFactor.toFixed(2)}`);

@@ -51,9 +51,9 @@ function runUntil(keys: string[], pred: () => boolean, timeout: number, label: s
   console.log(`  [${label} done t=${t.toFixed(1)}s] alt=${s.altitude.toFixed(0)} v=${s.airspeed.toFixed(1)} VS=${s.verticalSpeed.toFixed(1)} pitch=${s.pitchDeg.toFixed(0)} AoA=${s.angleOfAttackDeg.toFixed(1)}`);
 }
 
-run(2.5, ["KeyW"], "throttle", 99);
+run(2.5, ["ShiftLeft"], "throttle", 99);
 runUntil([], () => c.getState().airspeed >= 38, 30, "roll");
-runUntil(["ArrowUp"], () => c.getState().altitude > 110, 60, "climb");
-runUntil(["ArrowDown"], () => c.getState().verticalSpeed <= 0.5, 8, "level-out");
+runUntil(["KeyS"], () => c.getState().altitude > 110, 60, "climb");
+runUntil(["KeyW"], () => c.getState().verticalSpeed <= 0.5, 8, "level-out");
 console.log("— 22s hands-off cruise —");
 run(22, [], "cruise", 2);
