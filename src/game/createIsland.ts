@@ -1,4 +1,11 @@
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+// Side-effect import: registers Mesh.createInstance (tree instancing).
+// Without it the app throws at runtime — "InstancedMesh needs to be
+// imported before as it contains a side-effect required by your
+// code" — which white-screened the Phase 5 deploy. TypeScript and
+// the production build cannot catch this; test-headless/worldbuild.ts
+// now guards it.
+import "@babylonjs/core/Meshes/instancedMesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Meshes/buffer";
