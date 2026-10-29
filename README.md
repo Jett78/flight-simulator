@@ -8,7 +8,45 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
-## Phase 12 — Bigger world, bigger airport, mouse look (current)
+## Phase 12.1 — Find the next ring (current)
+
+Jeet played Checkpoint Flight live and reported that after
+clearing one ring he could not find the next. The guidance
+that already existed (minimap, steering arrow, gold beacon,
+route line) was not enough at range, so this phase makes the
+next ring unmissable from every angle:
+
+**Compass marker.** The bottom-centre compass strip now
+carries a gold ◆ at the next ring's absolute bearing
+(`checkpointNavigation` bearing, same convention as
+`headingDeg`: 0 = −Z, clockwise). Three copies (bearing −360 /
++0 / +360) so one is always in the strip window; it hides
+outside Checkpoint Flight.
+
+**Bigger, brighter next ring.** The active ring's torus
+thickened 3.4 → 5.0, its numbered badge grew 25 → 32, and
+the light pillar through it widened 11 → 16 m and brightened
+(alpha ~0.16 → ~0.22, pulsing to ~0.27). Later rings are
+unchanged, and the beam moves to the new next ring on every
+clear because the marker set is rebuilt on each ring pass.
+
+**Objective bar.** The checkpoint bar now shows a progress
+row (●●○○○: green done, gold next, dim later) alongside the
+existing "Turn left/right X° · distance · climb" cue, and the
+on-pass flash names the next ring with its distance ("Ring 3
+next · 640 m") instead of a generic "gold beacon" message.
+
+**STALL banner fix.** The banner is now gated on flight
+phase plus flying speed (`phase === "air"` and airspeed
+> 5 m/s), so it can no longer appear while parked, rolling,
+or bouncing on the ground — the old `!grounded` gate alone
+still let it flash during ground contact transitions.
+
+The mission minimap (gold next / blue later / runway line /
+route, `MAP_EXTENT` 1,750) and the steering arrow already
+covered the map leg of this fix and are unchanged.
+
+## Phase 12 — Bigger world, bigger airport, mouse look
 
 Jeet's live feedback: flying straight you ran out of island in
 seconds and ditched in the sea, the runway and airport felt

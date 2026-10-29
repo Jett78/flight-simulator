@@ -24,6 +24,11 @@ import type { CheckpointVisual } from "./missions";
  * - a numbered badge floating at each ring centre, always facing
  *   the camera.
  *
+ * Phase 12.1: the NEXT ring is deliberately oversized (thicker torus,
+ * bigger badge, wider/brighter beam) so it reads from 500+ m away —
+ * the original sizes were easy to lose against the island at range.
+ * Later rings keep their smaller, dimmer look.
+ *
  * All materials ignore fog so a distant active marker stays readable.
  * The handle owns every mesh/material/texture it creates; dispose()
  * removes the whole set. update(t) drives the pulse animation.
@@ -169,7 +174,7 @@ export function createCheckpointMarkers(
         `checkpoint-ring-${i}`,
         {
           diameter: v.r * 2,
-          thickness: v.state === "active" ? 3.4 : 2.3,
+          thickness: v.state === "active" ? 5.0 : 2.3,
           tessellation: 44,
         },
         scene,
@@ -198,7 +203,7 @@ export function createCheckpointMarkers(
     const tex = makeBadgeTexture(scene, i, v.state);
     if (tex) {
       textures.push(tex);
-      const size = v.state === "active" ? 25 : 18;
+      const size = v.state === "active" ? 32 : 18;
       const badge = track(
         MeshBuilder.CreatePlane(`checkpoint-badge-${i}`, { width: size, height: size }, scene),
       );
@@ -224,7 +229,7 @@ export function createCheckpointMarkers(
       const beacon = track(
         MeshBuilder.CreateCylinder(
           `checkpoint-beacon-${i}`,
-          { height: Math.max(v.y, 1), diameterTop: 11, diameterBottom: 11, tessellation: 20 },
+          { height: Math.max(v.y, 1), diameterTop: 16, diameterBottom: 16, tessellation: 20 },
           scene,
         ),
       );
@@ -235,7 +240,7 @@ export function createCheckpointMarkers(
           `checkpoint-beacon-mat-${i}`,
           new Color3(1, 0.68, 0.12),
           new Color3(0.2, 0.13, 0.02),
-          0.16,
+          0.22,
         ),
       );
       beacon.material = mat;
@@ -251,7 +256,7 @@ export function createCheckpointMarkers(
         if (part.kind === "ring") {
           part.mesh.scaling.setAll(1 + 0.045 * pulse);
         } else if (part.kind === "beacon" && part.material) {
-          part.material.alpha = 0.15 + 0.06 * (pulse * 0.5 + 0.5);
+          part.material.alpha = 0.20 + 0.07 * (pulse * 0.5 + 0.5);
         } else if (part.kind === "badge") {
           part.mesh.scaling.setAll(1 + 0.07 * pulse);
         }

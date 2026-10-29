@@ -445,6 +445,39 @@
   border-top: 8px solid #ffd166;
 }
 
+/* Phase 12.1: gold diamond marking the next checkpoint's absolute
+   bearing on the compass strip (positioned per frame, like labels). */
+.compass-target {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: #ffb400;
+  text-shadow:
+    0 0 6px rgba(255, 180, 0, 0.9),
+    0 0 2px rgba(255, 180, 0, 1);
+  transition: opacity 150ms linear;
+  pointer-events: none;
+}
+
+/* Phase 12.1: checkpoint progress dots in the objective bar. */
+.hud-objective-progress {
+  display: inline-flex;
+  gap: 3px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.hud-objective-progress .is-done {
+  color: #2fbf71;
+}
+.hud-objective-progress .is-next {
+  color: #ffb400;
+  text-shadow: 0 0 6px rgba(255, 180, 0, 0.9);
+}
+.hud-objective-progress .is-todo {
+  color: rgba(223, 233, 245, 0.45);
+}
+
 .compass-value {
   font-size: 16px;
   font-weight: 700;

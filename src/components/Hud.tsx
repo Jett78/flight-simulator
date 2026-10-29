@@ -243,6 +243,10 @@ export function Hud({
   const crashReasonEl = useRef<HTMLDivElement>(null);
   const objectiveTextEl = useRef<HTMLSpanElement>(null);
   const navArrowEl = useRef<HTMLSpanElement>(null);
+  // Phase 12.1: gold next-ring markers on the compass strip. Three
+  // copies (bearing −360 / +0 / +360) so one is always in the
+  // window no matter where the heading sits on the strip.
+  const compassTargetEls = useRef<(HTMLSpanElement | null)[]>([]);
   const mapPlaneEl = useRef<SVGGElement>(null);
   const checkpointToastEl = useRef<HTMLDivElement>(null);
   const checkpointToastTextEl = useRef<HTMLSpanElement>(null);
@@ -276,6 +280,22 @@ export function Hud({
     let toastUntil = 0;
     let toastVisible = false;
     let lastTouchdownSeq = 0;
+
+    // Phase 12.1: position the gold compass markers at the next
+    // ring's absolute bearing (same strip coordinates as the labels:
+    // left = (deg + 360) * COMPASS_PX). Null hides all three.
+    const setCompassTargets = (bearing: number | null) => {
+      const offsets = [-360, 0, 360];
+      compassTargetEls.current.forEach((el, i) => {
+        if (!el) return;
+        if (bearing === null) {
+          el.style.opacity = "0";
+          return;
+        }
+        el.style.left = `${(bearing + offsets[i] + 360) * COMPASS_PX}px`;
+        el.style.opacity = "1";
+      });
+    };
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -331,8 +351,12 @@ export function Hud({
       }
 
       if (stallEl.current) {
-        // A parked aircraft at 0 km/h is not stalling — only warn airborne.
-        stallEl.current.style.opacity = s.stallFactor > 0.25 && !s.grounded ? "1" : "0";
+        // Phase 12.1: only warn while genuinely flying. The old
+        // !grounded gate still let the banner flash during ground
+        // bounces / the spawn settle; flight phase + flying speed
+        // together mean a parked aircraft never shows STALL.
+        stallEl.current.style.opacity =
+          s.stallFactor > 0.25 && s.phase === "air" && s.airspeed > 5 ? "1" : "0";
       }
       if (groundChip.current) {
         const label = s.grounded ? "ON GROUND" : "AIRBORNE";
@@ -429,7 +453,9 @@ export function Hud({
         }
 
         // Checkpoint-passed toast (intermediate rings only — the
-        // final ring gets the result card instead).
+        // final ring gets the result card instead). Phase 12.1: name
+        // the next ring and its distance, so the pilot knows exactly
+        // where to look next instead of "the gold beacon" in general.
         if (
           run.id === "checkpoints" &&
           run.status === "active" &&
@@ -437,7 +463,10 @@ export function Hud({
           checkpointToastEl.current &&
           checkpointToastTextEl.current
         ) {
-          checkpointToastTextEl.current.textContent = `✓ Ring ${prevIndex + 1} done — next ring is the gold beacon`;
+          const nextNav = run.navigationToNext(s);
+          checkpointToastTextEl.current.textContent = nextNav
+            ? `✓ Ring ${prevIndex + 1} cleared — Ring ${nextNav.index + 1} next · ${Math.round(nextNav.distance)} m`
+            : `✓ Ring ${prevIndex + 1} cleared`;
           checkpointToastEl.current.style.opacity = "1";
           toastVisible = true;
           toastUntil = now + 2800;
@@ -452,6 +481,7 @@ export function Hud({
           let objective = "";
           if (run.id === "checkpoints") {
             const nav = run.navigationToNext(s);
+            setCompassTargets(nav ? nav.bearingDeg : null);
             if (nav) {
               const turn =
                 nav.direction === "straight"
@@ -477,8 +507,10 @@ export function Hud({
               }
             }
           } else if (run.id === "takeoff") {
+            setCompassTargets(null);
             objective = `Altitude ${Math.max(0, Math.round(s.altitude))} / ${TAKEOFF_TARGET_ALTITUDE} m · ⏱ ${formatTime(run.elapsed)}`;
           } else {
+            setCompassTargets(null);
             objective = `${s.grounded ? "Take off, then land on the runway" : "Land on the runway"} · ⏱ ${formatTime(run.elapsed)}`;
           }
           if (objective !== lastObjectiveKey) {
@@ -505,6 +537,7 @@ export function Hud({
         handledRun = null;
         lastVisualKey = "";
         lastObjectiveKey = "";
+        setCompassTargets(null);
       }
     };
 
@@ -519,7 +552,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 12 · BIGGER WORLD</div>
+        <div className="hud-badge">PHASE 12.1 · FIND THE NEXT RING</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -666,6 +699,24 @@ export function Hud({
       {activeMission && !runSummary && (
         <div className="hud-objective">
           <span className="hud-objective-name">🎯 {MISSION_INFO[activeMission].name}</span>
+          {activeMission === "checkpoints" && (
+            <span className="hud-objective-progress" aria-label="Checkpoint progress">
+              {CHECKPOINTS.map((_, i) => (
+                <span
+                  key={i}
+                  className={
+                    i < checkpointIndex
+                      ? "is-done"
+                      : i === checkpointIndex
+                        ? "is-next"
+                        : "is-todo"
+                  }
+                >
+                  ●
+                </span>
+              ))}
+            </span>
+          )}
           {activeMission === "checkpoints" && (
             <span className="hud-objective-nav" aria-hidden="true">
               <span ref={navArrowEl}>↑</span>
@@ -850,6 +901,19 @@ export function Hud({
                 style={{ left: (m.deg + 360) * COMPASS_PX }}
               >
                 {m.label}
+              </span>
+            ))}
+            {[-360, 0, 360].map((off, i) => (
+              <span
+                key={off}
+                ref={(el) => {
+                  compassTargetEls.current[i] = el;
+                }}
+                className="compass-target"
+                style={{ opacity: 0 }}
+                aria-hidden="true"
+              >
+                ◆
               </span>
             ))}
           </div>
