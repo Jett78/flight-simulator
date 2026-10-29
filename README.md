@@ -2,7 +2,63 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 2 — Aircraft & chase camera (current)
+## Phase 3 — Keyboard input & basic movement (current)
+
+Simple, predictable, frame-rate-independent movement — not an aerodynamic
+model. The aircraft moves forward along its nose direction at a speed set
+by the throttle; pitch/roll/yaw deflections are smoothed so response is
+progressive, and speed chases the throttle setting with a fixed
+acceleration limit. Movement lives in `src/game/AircraftController.ts`,
+keyboard state in `src/game/InputManager.ts` — both separate from
+rendering and UI.
+
+### Controls
+
+| Key | Action |
+| --- | --- |
+| **W / S** | Pitch — **W nose down, S nose up** (yoke style: push = descend, pull = climb) |
+| **A / D** | Roll — bank left / bank right |
+| **Q / E** | Yaw — nose left / nose right |
+| **Shift** | Increase throttle (hold) |
+| **Ctrl** | Decrease throttle (hold) |
+| **C** | Cycle camera: Chase → Chase far → Cockpit |
+| **R** | Reset aircraft to the runway start (position, level, 0 speed/throttle) |
+
+Notes:
+
+- Input uses `KeyboardEvent.code`, is tracked as a held-key set (continuous
+  press works, key repeat is ignored for one-shot keys), and is cleared
+  when the window loses focus so keys can never stick.
+- While the wheels are on the ground, nose-down pitch and roll are
+  blocked (ground guard, so the airframe can't clip the runway); yaw
+  still works like nose-wheel steering, and nose-up pitch is allowed.
+- There is no lift/gravity yet: at speed, pitch up to climb, pitch down
+  to descend; the ground and a 500m ceiling are hard clamps.
+- Max speed is 85 m/s (~306 km/h) at 100% throttle.
+- The bottom HUD shows live speed (km/h), throttle % and camera mode.
+  The Phase 2 "Reset view" button still resets only the camera.
+  (Changed in Phase 3: **R** now resets the *aircraft*; in Phase 2 it
+  reset the camera.)
+
+### Testing each control in the browser
+
+Click the page once so it has focus, then:
+
+1. **Throttle/speed** — hold **Shift**: throttle % climbs in the HUD,
+   speed builds and the plane rolls down the runway. Hold **Ctrl** to
+   throttle back down and slow.
+2. **Pitch** — at speed, hold **S** to raise the nose and climb; hold
+   **W** to push the nose down and descend.
+3. **Roll** — once airborne, hold **A** to bank left / **D** to bank
+   right; the turn follows the bank.
+4. **Yaw** — tap/hold **Q** or **E** to swing the nose left/right
+   (works on the ground too, like steering).
+5. **Camera** — press **C** repeatedly to cycle Chase → Chase far →
+   Cockpit → Chase; the HUD camera label follows.
+6. **Reset** — fly somewhere, press **R**: the aircraft instantly
+   returns to the runway start, level, stopped, throttle 0.
+
+## Phase 2 — Aircraft & chase camera
 
 - **Improved airplane** (still primitives only, one root transform): rounded nose with cockpit band, passenger window rows, doors and cheatlines, swept wings with dihedral, winglets and red/green navigation lights, two engine nacelles with dark intakes, raked tail fin with rudder + dorsal fin, swept horizontal stabilisers, correctly tapered tail cone, and twin-wheel nose gear + tandem main gears.
 - **Starting position:** on the runway centreline near the southern threshold, nose toward -Z with ~178m of runway ahead.
@@ -58,7 +114,8 @@ npm run dev
 
 Then open the URL Vite prints (default http://localhost:5173) in your browser.
 You should see the airplane centred in a chase view on the runway, with the
-airport around it. Press R (or the Reset camera button) to re-centre the view.
+airport around it. Hold Shift to throttle up and take off — full control
+list and per-control tests are in the Phase 3 section above.
 
 ## Checks
 
@@ -70,5 +127,6 @@ npm run lint    # oxlint
 ## Roadmap
 
 - Phase 1: 3D foundation
-- Phase 2: detailed airplane + chase camera ← you are here
+- Phase 2: detailed airplane + chase camera
+- Phase 3: keyboard input + basic movement ← you are here
 - Later phases (not started): flight physics, keyboard controls, and more — added one phase at a time.

@@ -1,7 +1,7 @@
 {
   "name": "flight-simulator",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,5 +23,5 @@
     "typescript": "~7.0.2",
     "vite": "^8.3.5"
   },
-  "description": "Browser-based 3D flight simulator with Babylon.js, React, TypeScript and Vite \u2014 Phase 2: detailed airplane + chase camera"
+  "description": "Browser-based 3D flight simulator with Babylon.js, React, TypeScript and Vite \u2014 Phase 3: keyboard input + basic movement"
 }

@@ -94,6 +94,20 @@
   font-weight: 600;
 }
 
+.controls-list {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.controls-list strong {
+  color: #ffd166;
+  font-weight: 700;
+}
+
+.hud-telemetry strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .hud-reset {
   pointer-events: auto;
   font: inherit;

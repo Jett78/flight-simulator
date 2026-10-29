@@ -7,49 +7,83 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
+import { AircraftController } from "./AircraftController";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
+import { InputManager } from "./InputManager";
 
 /**
- * Coordinate convention (shared by the airplane model and this camera):
- *   forward = -Z, up = +Y, right = +X. The aircraft root is never rotated
- *   away from that convention in Phase 2; the chase math below works for
- *   any future yaw/pitch/roll because it uses the root's world rotation.
+ * Coordinate convention (shared by the airplane model, the controller
+ * and this camera): forward = -Z, up = +Y, right = +X.
  */
 
 /** Runway centreline, near the southern threshold, nose pointing down -Z
  *  so ~178m of runway lies ahead. y = runway top (0.16) + gear depth (2.25). */
 const AIRCRAFT_START = new Vector3(0, 2.41, 68);
 
-/** Chase offset in aircraft-local space: behind (+Z) and above (+Y). */
-const CHASE_OFFSET = new Vector3(0, 4.4, 14);
-/** Look-at offset in aircraft-local space: slightly above the fuselage
- *  and ahead of the nose, so the plane sits low-centre in frame. */
-const CHASE_LOOK_OFFSET = new Vector3(0, 1.1, -8);
+interface CameraMode {
+  name: string;
+  /** Camera position in aircraft-local space. */
+  offset: Vector3;
+  /** Look-at point in aircraft-local space. */
+  lookOffset: Vector3;
+  /** Exponential damping rates (per second) for position / target. */
+  posDamp: number;
+  targetDamp: number;
+}
 
-/** Frame-rate independent exponential damping rates (per second).
- *  Position trails a little more than the look target, which keeps the
- *  framing stable without visible lag or snapping. */
-const POSITION_DAMPING = 3.4;
-const TARGET_DAMPING = 5.5;
+/**
+ * Camera modes, cycled with the C key (Phase 3). Offsets are behind
+ * (+Z) and above (+Y) the aircraft, except Cockpit, which sits at the
+ * pilot's head and is damped so hard it is effectively rigid.
+ */
+const CAMERA_MODES: CameraMode[] = [
+  {
+    name: "Chase",
+    offset: new Vector3(0, 4.4, 14),
+    lookOffset: new Vector3(0, 1.1, -8),
+    posDamp: 3.4,
+    targetDamp: 5.5,
+  },
+  {
+    name: "Chase far",
+    offset: new Vector3(0, 7.5, 27),
+    lookOffset: new Vector3(0, 1.2, -10),
+    posDamp: 3.4,
+    targetDamp: 5.5,
+  },
+  {
+    name: "Cockpit",
+    offset: new Vector3(0, 1.7, -4.8),
+    lookOffset: new Vector3(0, 1.15, -30),
+    posDamp: 40,
+    targetDamp: 40,
+  },
+];
 
 /**
  * Owns the Babylon.js Engine + Scene.
  *
- * Phase 2: improved airplane on the runway start position, followed by a
- * smoothed third-person chase camera with a reset function (HUD button
- * or the R key). Still no flight physics or flight controls.
+ * Phase 3 wiring: InputManager (keyboard) -> AircraftController
+ * (movement) -> chase camera, updated once per frame in that order
+ * with a single clamped delta-time. Rendering stays separate from
+ * movement: the controller never touches the camera or the scene.
  */
 export class FlightScene {
+  /** Optional UI callbacks, assigned by the React host. */
+  onCameraModeChange?: (modeName: string) => void;
+  onTelemetry?: (speedKmh: number, throttlePercent: number) => void;
+
   private readonly engine: Engine;
   private readonly scene: Scene;
   private readonly camera: FreeCamera;
   private readonly aircraft: TransformNode;
+  private readonly input: InputManager;
+  private readonly controller: AircraftController;
   private readonly smoothedTarget = new Vector3();
   private readonly onResize = () => this.engine.resize();
-  private readonly onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "r" || event.key === "R") this.resetCamera();
-  };
+  private cameraModeIndex = 0;
+  private telemetryTimer = 0;
   private disposed = false;
 
   // Scratch objects reused every frame (no per-frame allocation)
@@ -76,22 +110,69 @@ export class FlightScene {
     const shadowGenerator = this.createLights();
     this.aircraft = this.buildWorld(shadowGenerator);
 
+    this.input = new InputManager();
+    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START);
+
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
     this.camera.minZ = 0.1;
     this.camera.maxZ = 1200;
     this.camera.fov = 0.82;
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
 
-    this.scene.onBeforeRenderObservable.add(() => this.updateChaseCamera());
+    this.scene.onBeforeRenderObservable.add(() => this.update());
 
     window.addEventListener("resize", this.onResize);
-    window.addEventListener("keydown", this.onKeyDown);
     this.engine.runRenderLoop(() => {
       if (!this.disposed) this.scene.render();
     });
   }
 
-  /** World-space chase pose for the aircraft's current transform. */
+  private get cameraMode(): CameraMode {
+    return CAMERA_MODES[this.cameraModeIndex];
+  }
+
+  /** One frame: input actions -> aircraft movement -> camera -> HUD. */
+  private update(): void {
+    // Clamp dt so a background tab / hitch can't make anything jump
+    const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+
+    if (this.input.wasJustPressed("KeyR")) this.resetAircraft();
+    if (this.input.wasJustPressed("KeyC")) this.cycleCameraMode();
+
+    this.controller.update(dt, this.input);
+    this.updateChaseCamera(dt);
+
+    this.telemetryTimer += dt;
+    if (this.telemetryTimer >= 0.15) {
+      this.telemetryTimer = 0;
+      this.onTelemetry?.(
+        Math.round(this.controller.speed * 3.6),
+        Math.round(this.controller.throttle * 100),
+      );
+    }
+
+    this.input.postUpdate();
+  }
+
+  /** R: restore the aircraft to its start state and re-frame it. */
+  resetAircraft(): void {
+    this.controller.reset();
+    this.resetCamera();
+  }
+
+  /** C: cycle Chase -> Chase far -> Cockpit -> Chase ... */
+  cycleCameraMode(): void {
+    const previous = this.cameraMode.name;
+    this.cameraModeIndex = (this.cameraModeIndex + 1) % CAMERA_MODES.length;
+    // Snap when entering or leaving Cockpit so the camera never
+    // sweeps through the airframe; chase modes glide smoothly.
+    if (previous === "Cockpit" || this.cameraMode.name === "Cockpit") {
+      this.resetCamera();
+    }
+    this.onCameraModeChange?.(this.cameraMode.name);
+  }
+
+  /** World-space camera pose for the aircraft's current transform. */
   private computeChasePose(outPos: Vector3, outTarget: Vector3): void {
     const node = this.aircraft;
     if (node.rotationQuaternion) {
@@ -105,26 +186,25 @@ export class FlightScene {
       );
     }
     Matrix.FromQuaternionToRef(this._quat, this._rotMatrix);
-    // Offset rotated into world space (rotation only, no translation)
-    Vector3.TransformNormalToRef(CHASE_OFFSET, this._rotMatrix, outPos);
+    const mode = this.cameraMode;
+    // Offsets rotated into world space (rotation only, no translation)
+    Vector3.TransformNormalToRef(mode.offset, this._rotMatrix, outPos);
     outPos.addInPlace(node.position);
-    Vector3.TransformNormalToRef(CHASE_LOOK_OFFSET, this._rotMatrix, outTarget);
+    Vector3.TransformNormalToRef(mode.lookOffset, this._rotMatrix, outTarget);
     outTarget.addInPlace(node.position);
   }
 
-  private updateChaseCamera(): void {
-    // Clamp dt so a background tab / hitch can't make the camera jump
-    const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+  private updateChaseCamera(dt: number): void {
     this.computeChasePose(this._desiredPos, this._desiredTarget);
-
-    const posAlpha = 1 - Math.exp(-POSITION_DAMPING * dt);
-    const targetAlpha = 1 - Math.exp(-TARGET_DAMPING * dt);
+    const mode = this.cameraMode;
+    const posAlpha = 1 - Math.exp(-mode.posDamp * dt);
+    const targetAlpha = 1 - Math.exp(-mode.targetDamp * dt);
     Vector3.LerpToRef(this.camera.position, this._desiredPos, posAlpha, this.camera.position);
     Vector3.LerpToRef(this.smoothedTarget, this._desiredTarget, targetAlpha, this.smoothedTarget);
     this.camera.setTarget(this.smoothedTarget);
   }
 
-  /** Snap the chase camera back behind/above the aircraft, instantly. */
+  /** Snap the camera back to the current mode's pose, instantly. */
   resetCamera(): void {
     this.computeChasePose(this._desiredPos, this._desiredTarget);
     this.camera.position.copyFrom(this._desiredPos);
@@ -178,7 +258,7 @@ export class FlightScene {
     if (this.disposed) return;
     this.disposed = true;
     window.removeEventListener("resize", this.onResize);
-    window.removeEventListener("keydown", this.onKeyDown);
+    this.input.dispose();
     this.engine.stopRenderLoop();
     this.scene.dispose();
     this.engine.dispose();
