@@ -6,11 +6,12 @@ import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator"
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Scene } from "@babylonjs/core/scene";
 import { AircraftController, type FlightState } from "./AircraftController";
+import {
+  createCheckpointMarkers,
+  type CheckpointMarkerHandle,
+} from "./checkpointMarkers";
 import type { CheckpointVisual } from "./missions";
 import { loadAircraftModel } from "./aircraftModel";
 import { createAirport } from "./createAirport";
@@ -121,7 +122,8 @@ export class FlightScene {
   private cameraModeIndex = 0;
   private telemetryTimer = 0;
   private physicsAccumulator = 0;
-  private checkpointMeshes: AbstractMesh[] = [];
+  private checkpointMarkers: CheckpointMarkerHandle | null = null;
+  private checkpointTime = 0;
   private disposed = false;
   private paused = false;
 
@@ -203,12 +205,18 @@ export class FlightScene {
 
   /** One frame: input actions -> fixed-step physics -> camera -> HUD. */
   private update(): void {
+    // Clamp frame time so pauses/tab switches can't destabilise physics
+    const frameDt = Math.min(this.engine.getDeltaTime() / 1000, MAX_FRAME_DT);
+
+    // Checkpoint guidance pulse (runs even while paused — it is a
+    // visual aid, not simulation state).
+    this.checkpointTime += frameDt;
+    this.checkpointMarkers?.update(this.checkpointTime);
+
     if (this.paused) {
       this.input.postUpdate();
       return;
     }
-    // Clamp frame time so pauses/tab switches can't destabilise physics
-    const frameDt = Math.min(this.engine.getDeltaTime() / 1000, MAX_FRAME_DT);
 
     if (this.input.wasJustPressed("KeyR")) this.resetAircraft();
     if (this.input.wasJustPressed("KeyC")) this.cycleCameraMode();
@@ -247,34 +255,15 @@ export class FlightScene {
   }
 
   /**
-   * Phase 9: show/hide the checkpoint rings for the active mission.
-   * The next checkpoint is a bright gold ring; the rest are faint
-   * blue. An empty list clears all rings (free flight / other missions).
+   * Phase 9: show/hide the checkpoint guidance set for the active
+   * mission (rings + route ribbon + next-ring beacon + badges, built
+   * by checkpointMarkers.ts). An empty list clears it all (free
+   * flight / other missions).
    */
   setCheckpoints(visuals: CheckpointVisual[]): void {
-    for (const mesh of this.checkpointMeshes) mesh.dispose();
-    this.checkpointMeshes = [];
-    for (const v of visuals) {
-      const ring = MeshBuilder.CreateTorus(
-        "checkpoint",
-        { diameter: v.r * 2, thickness: 1.7, tessellation: 40 },
-        this.scene,
-      );
-      ring.position.set(v.x, v.y, v.z);
-      ring.rotation.y = v.yaw;
-      const mat = new StandardMaterial("checkpointMat", this.scene);
-      if (v.active) {
-        mat.emissiveColor = new Color3(1, 0.72, 0.15);
-        mat.diffuseColor = new Color3(0.35, 0.25, 0.05);
-      } else {
-        mat.emissiveColor = new Color3(0.25, 0.45, 0.75);
-        mat.diffuseColor = new Color3(0.1, 0.16, 0.25);
-        mat.alpha = 0.55;
-      }
-      ring.material = mat;
-      ring.isPickable = false;
-      this.checkpointMeshes.push(ring);
-    }
+    this.checkpointMarkers?.dispose();
+    this.checkpointMarkers =
+      visuals.length > 0 ? createCheckpointMarkers(this.scene, visuals) : null;
   }
 
   /** C: cycle Chase -> Chase far -> Cockpit -> Chase ... */
@@ -409,6 +398,8 @@ export class FlightScene {
     this.disposed = true;
     window.removeEventListener("resize", this.onResize);
     this.input.dispose();
+    this.checkpointMarkers?.dispose();
+    this.checkpointMarkers = null;
     this.engine.stopRenderLoop();
     this.scene.dispose();
     this.engine.dispose();

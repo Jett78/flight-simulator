@@ -5,10 +5,12 @@
  * Run: npx tsx test-headless/missions.test.ts
  */
 import type { FlightState } from "../src/game/AircraftController";
+import { heightAt } from "../src/game/createIsland";
 import {
   CHECKPOINTS,
   MissionRun,
   TAKEOFF_TARGET_ALTITUDE,
+  checkpointNavigation,
   checkpointVisuals,
 } from "../src/game/missions";
 
@@ -85,6 +87,16 @@ function atCheckpoint(i: number): FlightState {
   check(
     "M2 visuals mark only the next ring active",
     vis.length === CHECKPOINTS.length && vis[0].active && vis.slice(1).every((v) => !v.active),
+  );
+  check(
+    "M2b visual states: first active, rest upcoming; passed rings completed",
+    vis[0].state === "active" &&
+      vis.slice(1).every((v) => v.state === "upcoming") &&
+      (() => {
+        run.step(atCheckpoint(0), 0.1);
+        const v2 = checkpointVisuals(run);
+        return v2[0].state === "completed" && v2[1].state === "active";
+      })(),
   );
 }
 
@@ -164,6 +176,65 @@ function atCheckpoint(i: number): FlightState {
   const frozen = run.elapsed;
   run.step(state(), 10);
   check("M7b timer stops when the run ends", run.elapsed === frozen);
+}
+
+// ---------- M8. Course safety: every ring clears the terrain ----------
+// Regression guard for the 0.9.0 course, whose ring 2 intersected a
+// mountain slope. Sample the real island heightfield inside each
+// ring's capture radius and demand a flyable margin.
+{
+  let worst = Infinity;
+  let worstIdx = -1;
+  CHECKPOINTS.forEach((cp, i) => {
+    let maxH = -Infinity;
+    for (let dx = -cp.r; dx <= cp.r; dx += 6) {
+      for (let dz = -cp.r; dz <= cp.r; dz += 6) {
+        if (Math.hypot(dx, dz) <= cp.r) {
+          maxH = Math.max(maxH, heightAt(cp.x + dx, cp.z + dz));
+        }
+      }
+    }
+    const clearance = cp.y - maxH;
+    if (clearance < worst) {
+      worst = clearance;
+      worstIdx = i;
+    }
+  });
+  check(
+    "M8 every ring clears terrain by >20 m inside its radius",
+    worst > 20,
+    `worst ring ${worstIdx + 1}: ${worst.toFixed(1)} m`,
+  );
+}
+
+// ---------- M9. Navigation guidance (arrow / turn / climb cues) ----------
+{
+  const spawn = state(); // (0, 68), altitude 0, heading 000
+  const nav = checkpointNavigation(spawn, 0);
+  check(
+    "M9a from spawn ring 1 is straight ahead",
+    nav !== null && nav.direction === "straight" && Math.abs(nav.relativeBearingDeg) < 1,
+    `rel=${nav?.relativeBearingDeg.toFixed(1)}`,
+  );
+  check(
+    "M9b distance + climb match the geometry",
+    nav !== null &&
+      Math.abs(nav.distance - Math.hypot(428, 65 - 2.41)) < 0.5 &&
+      Math.abs(nav.altitudeDelta - (65 - 2.41)) < 0.01,
+    `dist=${nav?.distance.toFixed(1)} climb=${nav?.altitudeDelta.toFixed(1)}`,
+  );
+  const facingEast = checkpointNavigation(state({ headingDeg: 90 }), 0);
+  check(
+    "M9c facing east, ring 1 is a left turn",
+    facingEast !== null && facingEast.direction === "left" && facingEast.relativeBearingDeg < -80,
+  );
+  const toRing2 = checkpointNavigation(atCheckpoint(0), 1);
+  check(
+    "M9d from ring 1, ring 2 is a right turn",
+    toRing2 !== null && toRing2.direction === "right" && toRing2.relativeBearingDeg > 30,
+    `rel=${toRing2?.relativeBearingDeg.toFixed(0)}`,
+  );
+  check("M9e no navigation past the last ring", checkpointNavigation(spawn, 99) === null);
 }
 
 console.log(failures === 0 ? "ALL MISSION TESTS PASSED" : `${failures} FAILURES`);

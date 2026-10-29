@@ -13,8 +13,8 @@ touchdown system (there is no second one).
   starting a mission resets the aircraft to the start line. Best
   scores are kept locally (browser localStorage only — no backend).
 - **Checkpoint Flight:** five glowing rings around the island —
-  the next one is gold, the rest faint blue. Fly through them in
-  order; passing a later ring early does not count.
+  the next one is gold, passed ones turn green, later ones blue.
+  Fly through them in order; passing a later ring early does not count.
 - **Takeoff & Climb:** take off and reach 120 m, judged from the
   real altitude and airborne state.
 - **Landing Challenge:** take off, return, and touch down on the
@@ -35,13 +35,36 @@ touchdown system (there is no second one).
 | Landing Challenge | smooth 1000 / hard 600, − 5 × seconds, min 100 |
 | Any failure (crash, off-runway) | 0 — never a completion |
 
-**Verify:** open 🏁 Missions, start Checkpoint Flight — five rings
-appear (gold one ahead down the runway), the objective line counts
-rings/distance/time; take off through the gold ring and it advances.
-Takeoff & Climb completes at 120 m; the Landing Challenge completes
-only on a real runway touchdown. Headless:
-`test-headless/missions.test.ts` covers ordering, completion,
-scoring, failure and restart.
+**Navigation & playability update (0.9.1)** — after live play the
+checkpoint course was hard to follow (a ring 600 m away is a few
+pixels, and nothing said where the next one was) and ring 2 turned
+out to intersect a mountain slope. Now:
+
+- **Follow the gold:** the next ring gets a tall pulsing light
+  pillar visible across the island, a thick gold route ribbon runs
+  spawn → ring 1 → … → ring 5 (passed legs turn green), every ring
+  carries a numbered badge facing the camera, and marker materials
+  ignore fog so they stay readable at distance.
+- **HUD guidance:** the objective line gained a steering arrow plus
+  plain-English cues — “Ring 2/5 · 384 m · Turn right 35° · Climb
+  48 m” — a **mission minimap** (top-left: island, runway, route,
+  ring states, your live position/heading), and a “✓ Ring done”
+  toast when you pass one.
+- **Easier, safer course:** rings are bigger (42 m capture radius),
+  the legs are shorter, the first climb is gentler, and every ring
+  now clears the terrain by 40+ m inside its radius — locked in by
+  a headless test that samples the real island heightfield.
+- The parked-aircraft STALL banner no longer shows on the ground.
+
+**Verify:** open 🏁 Missions, start Checkpoint Flight — the gold
+beacon and route ribbon are visible from the start line, the map
+appears top-left, and the objective line points you at ring 1
+(“Fly straight · Climb 63 m” from spawn). Takeoff & Climb completes
+at 120 m; the Landing Challenge completes only on a real runway
+touchdown. Headless: `test-headless/missions.test.ts` covers
+ordering, completion, scoring, failure, restart, navigation math
+and terrain clearance. Also live at
+https://flightsimulator.jeetdeula.com.np/
 
 ## Phase 8 — Models & materials
 

@@ -35,14 +35,19 @@ export interface CheckpointDef {
 export const TAKEOFF_TARGET_ALTITUDE = 120; // metres above the runway datum
 
 const CP_POINTS: [number, number, number][] = [
-  // x, ring-centre height (world Y), z — a circuit around the island
-  [0, 95, -520], // climb out to the north
-  [430, 115, -380], // right turn, east side
-  [520, 100, 180], // southbound along the coast
-  [180, 85, 560], // turning for home
-  [-260, 80, 300], // final gate, west side
+  // x, ring-centre height (world Y), z — a circuit around the island.
+  // 0.9.1: the course was re-plotted for playability. Every ring now
+  // keeps at least ~28 m of clearance over the terrain within 50 m
+  // horizontally (checked against the island heightfield) — the old
+  // ring 2 sat at a mountain peak and its rim intersected the slope.
+  // The legs are also shorter and the first climb is gentler.
+  [0, 65, -360], // climb out to the north
+  [260, 110, -540], // right turn, north-east hills
+  [560, 100, -40], // east coast, turning south
+  [300, 90, 520], // south shore, turning for home
+  [-160, 85, 300], // final gate, south-west
 ];
-const CP_RADIUS = 30;
+const CP_RADIUS = 42;
 
 export const CHECKPOINTS: CheckpointDef[] = CP_POINTS.map(([x, y, z], i) => {
   const prev = i === 0 ? [0, 68] : [CP_POINTS[i - 1][0], CP_POINTS[i - 1][2]];
@@ -55,7 +60,7 @@ export const MISSION_INFO: Record<
 > = {
   checkpoints: {
     name: "Checkpoint Flight",
-    blurb: "Fly through all 5 rings in order, as fast as you can.",
+    blurb: "Follow the gold beacon, route line and map through all 5 rings, in order.",
   },
   takeoff: {
     name: "Takeoff & Climb",
@@ -69,6 +74,54 @@ export const MISSION_INFO: Record<
 
 export interface CheckpointVisual extends CheckpointDef {
   active: boolean;
+  state: "completed" | "active" | "upcoming";
+}
+
+/** Live guidance to the next checkpoint, for the HUD arrow/map. */
+export interface CheckpointNavigation {
+  index: number;
+  target: CheckpointDef;
+  /** 3D distance to the ring centre, metres. */
+  distance: number;
+  /** Compass bearing to the target, degrees (0 = north / -Z). */
+  bearingDeg: number;
+  /** Signed turn from the current heading: - = left, + = right. */
+  relativeBearingDeg: number;
+  /** Target height minus aircraft height: + = climb, - = descend. */
+  altitudeDelta: number;
+  direction: "straight" | "left" | "right" | "around";
+}
+
+export function checkpointNavigation(
+  state: FlightState,
+  index: number,
+): CheckpointNavigation | null {
+  const target = CHECKPOINTS[index];
+  if (!target) return null;
+  const wy = state.altitude + 2.41; // aircraft root world Y
+  const dx = target.x - state.posX;
+  const dz = target.z - state.posZ;
+  const distance = Math.hypot(dx, target.y - wy, dz);
+  const bearingDeg = (Math.atan2(dx, -dz) * (180 / Math.PI) + 360) % 360;
+  const relativeBearingDeg =
+    ((bearingDeg - state.headingDeg + 540) % 360) - 180;
+  const direction =
+    Math.abs(relativeBearingDeg) <= 10
+      ? "straight"
+      : Math.abs(relativeBearingDeg) >= 170
+        ? "around"
+        : relativeBearingDeg < 0
+          ? "left"
+          : "right";
+  return {
+    index,
+    target,
+    distance,
+    bearingDeg,
+    relativeBearingDeg,
+    altitudeDelta: target.y - wy,
+    direction,
+  };
 }
 
 export class MissionRun {
@@ -92,11 +145,13 @@ export class MissionRun {
 
   /** Distance to the next checkpoint centre, metres (checkpoints only). */
   distanceToNext(state: FlightState): number | null {
+    return this.navigationToNext(state)?.distance ?? null;
+  }
+
+  /** Full navigation guidance to the next checkpoint (checkpoints only). */
+  navigationToNext(state: FlightState): CheckpointNavigation | null {
     if (this.id !== "checkpoints" || this.status !== "active") return null;
-    const cp = CHECKPOINTS[this.nextIndex];
-    if (!cp) return null;
-    const wy = state.altitude + 2.41; // aircraft root world Y
-    return Math.hypot(state.posX - cp.x, wy - cp.y, state.posZ - cp.z);
+    return checkpointNavigation(state, this.nextIndex);
   }
 
   /** Advance the mission. dtSeconds is real elapsed time (already
@@ -167,7 +222,11 @@ export class MissionRun {
 /** Visual state for the 3D rings (empty unless a checkpoint run is live). */
 export function checkpointVisuals(run: MissionRun | null): CheckpointVisual[] {
   if (!run || run.id !== "checkpoints" || run.status !== "active") return [];
-  return CHECKPOINTS.map((cp, i) => ({ ...cp, active: i === run.nextIndex }));
+  return CHECKPOINTS.map((cp, i) => ({
+    ...cp,
+    active: i === run.nextIndex,
+    state: i < run.nextIndex ? "completed" : i === run.nextIndex ? "active" : "upcoming",
+  }));
 }
 
 // ---------- Local records (best scores; localStorage only) ----------

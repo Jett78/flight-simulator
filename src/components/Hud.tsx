@@ -60,6 +60,11 @@ const COMPASS_PX = 2.2; // px per degree on the heading strip
 const VSI_MAX = 20; // m/s full-scale on the vertical-speed indicator
 const VSI_TRAVEL = 52; // px from centre to full-scale
 
+// Mission minimap: world metres -> SVG viewBox units (0..100).
+// North (-Z) is up, so screen y grows with world +Z (south).
+const MAP_EXTENT = 900;
+const mapCoord = (v: number) => ((v + MAP_EXTENT) / (MAP_EXTENT * 2)) * 100;
+
 function compassLabel(deg: number): string {
   const norm = ((deg % 360) + 360) % 360;
   if (norm === 0) return "N";
@@ -126,6 +131,7 @@ export function Hud({
   const [activeMission, setActiveMission] = useState<MissionId | null>(null);
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [records, setRecords] = useState<MissionRecords>(() => loadRecords());
+  const [checkpointIndex, setCheckpointIndex] = useState(0);
   const runRef = useRef<MissionRun | null>(null);
   const pausedRef = useRef(paused);
   const setCheckpointsRef = useRef(setCheckpoints);
@@ -142,6 +148,7 @@ export function Hud({
     setActiveMission(id);
     setRunSummary(null);
     setMenuOpen(false);
+    setCheckpointIndex(0);
     setCheckpoints(checkpointVisuals(runRef.current));
   };
 
@@ -150,6 +157,7 @@ export function Hud({
     setActiveMission(null);
     setRunSummary(null);
     setMenuOpen(false);
+    setCheckpointIndex(0);
     setCheckpoints([]);
   };
 
@@ -174,6 +182,10 @@ export function Hud({
   const crashEl = useRef<HTMLDivElement>(null);
   const crashReasonEl = useRef<HTMLDivElement>(null);
   const objectiveTextEl = useRef<HTMLSpanElement>(null);
+  const navArrowEl = useRef<HTMLSpanElement>(null);
+  const mapPlaneEl = useRef<SVGGElement>(null);
+  const checkpointToastEl = useRef<HTMLDivElement>(null);
+  const checkpointToastTextEl = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -201,6 +213,8 @@ export function Hud({
     let lastObjectiveKey = "";
     let lastVisualKey = "";
     let handledRun: MissionRun | null = null;
+    let toastUntil = 0;
+    let toastVisible = false;
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -256,7 +270,8 @@ export function Hud({
       }
 
       if (stallEl.current) {
-        stallEl.current.style.opacity = s.stallFactor > 0.25 ? "1" : "0";
+        // A parked aircraft at 0 km/h is not stalling — only warn airborne.
+        stallEl.current.style.opacity = s.stallFactor > 0.25 && !s.grounded ? "1" : "0";
       }
       if (groundChip.current) {
         const label = s.grounded ? "ON GROUND" : "AIRBORNE";
@@ -328,19 +343,63 @@ export function Hud({
       if (run) {
         const dtMs = lastFrameAt > 0 ? now - lastFrameAt : 0;
         lastFrameAt = now;
+        const prevIndex = run.nextIndex;
         run.step(s, pausedRef.current ? 0 : Math.min(dtMs / 1000, 0.1));
 
         const visualKey = `${run.id}:${run.nextIndex}:${run.status}`;
         if (visualKey !== lastVisualKey) {
           lastVisualKey = visualKey;
           setCheckpointsRef.current(checkpointVisuals(run));
+          if (run.id === "checkpoints") setCheckpointIndex(run.nextIndex);
+        }
+
+        // Checkpoint-passed toast (intermediate rings only — the
+        // final ring gets the result card instead).
+        if (
+          run.id === "checkpoints" &&
+          run.status === "active" &&
+          run.nextIndex > prevIndex &&
+          checkpointToastEl.current &&
+          checkpointToastTextEl.current
+        ) {
+          checkpointToastTextEl.current.textContent = `✓ Ring ${prevIndex + 1} done — next ring is the gold beacon`;
+          checkpointToastEl.current.style.opacity = "1";
+          toastVisible = true;
+          toastUntil = now + 2800;
+        }
+        if (toastVisible && now > toastUntil && checkpointToastEl.current) {
+          checkpointToastEl.current.style.opacity = "0";
+          toastVisible = false;
         }
 
         if (run.status === "active") {
           let objective = "";
           if (run.id === "checkpoints") {
-            const dist = run.distanceToNext(s);
-            objective = `Ring ${Math.min(run.nextIndex + 1, CHECKPOINTS.length)}/${CHECKPOINTS.length}${dist !== null ? ` · ${Math.round(dist)} m` : ""} · ⏱ ${formatTime(run.elapsed)}`;
+            const nav = run.navigationToNext(s);
+            if (nav) {
+              const turn =
+                nav.direction === "straight"
+                  ? "Fly straight"
+                  : nav.direction === "around"
+                    ? "Turn around"
+                    : `Turn ${nav.direction} ${Math.round(Math.abs(nav.relativeBearingDeg))}°`;
+              const climb =
+                nav.altitudeDelta > 8
+                  ? `Climb ${Math.round(nav.altitudeDelta)} m`
+                  : nav.altitudeDelta < -8
+                    ? `Descend ${Math.round(-nav.altitudeDelta)} m`
+                    : "Hold altitude";
+              objective = `Ring ${nav.index + 1}/${CHECKPOINTS.length} · ${Math.round(nav.distance)} m · ${turn} · ${climb} · ⏱ ${formatTime(run.elapsed)}`;
+              if (navArrowEl.current) {
+                navArrowEl.current.style.transform = `rotate(${nav.relativeBearingDeg}deg)`;
+              }
+              if (mapPlaneEl.current) {
+                mapPlaneEl.current.setAttribute(
+                  "transform",
+                  `translate(${mapCoord(s.posX)} ${mapCoord(s.posZ)}) rotate(${hdg})`,
+                );
+              }
+            }
           } else if (run.id === "takeoff") {
             objective = `Altitude ${Math.max(0, Math.round(s.altitude))} / ${TAKEOFF_TARGET_ALTITUDE} m · ⏱ ${formatTime(run.elapsed)}`;
           } else {
@@ -479,6 +538,10 @@ export function Hud({
                 Hold Shift — at ~100 km/h pull S to take off. Land back on
                 the runway gently: sink under ~2.5 m/s, wings level.
               </li>
+              <li className="hud-help-tip">
+                Checkpoint Flight: follow the gold beacon and route line —
+                the arrow, map and “Turn / Climb” cues point at the next ring.
+              </li>
             </ul>
           </aside>
         )}
@@ -499,6 +562,11 @@ export function Hud({
       {activeMission && !runSummary && (
         <div className="hud-objective">
           <span className="hud-objective-name">🎯 {MISSION_INFO[activeMission].name}</span>
+          {activeMission === "checkpoints" && (
+            <span className="hud-objective-nav" aria-hidden="true">
+              <span ref={navArrowEl}>↑</span>
+            </span>
+          )}
           <span ref={objectiveTextEl} className="hud-objective-text" />
           <button
             type="button"
@@ -511,6 +579,62 @@ export function Hud({
             ✕ End
           </button>
         </div>
+      )}
+
+      {/* Phase 9.1 checkpoint-passed toast */}
+      <div ref={checkpointToastEl} className="hud-checkpoint-toast" style={{ opacity: 0 }}>
+        <span ref={checkpointToastTextEl} />
+      </div>
+
+      {/* Phase 9.1 mission minimap (checkpoint flight only) */}
+      {activeMission === "checkpoints" && !runSummary && (
+        <aside className="hud-panel hud-map" aria-label="Mission map">
+          <div className="hud-map-head">
+            <span>MISSION MAP</span>
+            <span className="hud-map-north">N ↑</span>
+          </div>
+          <svg className="hud-map-svg" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r="60" className="hud-map-island" />
+            <line
+              x1="50"
+              y1={mapCoord(-110)}
+              x2="50"
+              y2={mapCoord(110)}
+              className="hud-map-runway"
+            />
+            <polyline
+              points={[
+                `${mapCoord(0)},${mapCoord(68)}`,
+                ...CHECKPOINTS.map((cp) => `${mapCoord(cp.x)},${mapCoord(cp.z)}`),
+              ].join(" ")}
+              className="hud-map-route"
+            />
+            {CHECKPOINTS.map((cp, i) => {
+              const st =
+                i < checkpointIndex ? "done" : i === checkpointIndex ? "next" : "todo";
+              return (
+                <g key={i} className={`hud-map-cp hud-map-cp-${st}`}>
+                  <circle cx={mapCoord(cp.x)} cy={mapCoord(cp.z)} r={st === "next" ? 3.6 : 2.8} />
+                  <text x={mapCoord(cp.x)} y={mapCoord(cp.z) + 1.3}>
+                    {st === "done" ? "✓" : i + 1}
+                  </text>
+                </g>
+              );
+            })}
+            <g
+              ref={mapPlaneEl}
+              transform={`translate(${mapCoord(0)} ${mapCoord(68)}) rotate(0)`}
+            >
+              <path d="M 0 -3.4 L 2.2 2.8 L 0 1.5 L -2.2 2.8 Z" className="hud-map-plane" />
+            </g>
+          </svg>
+          <div className="hud-map-legend">
+            <span className="is-next">● Next</span>
+            <span className="is-done">● Done</span>
+            <span className="is-todo">● Later</span>
+            <span className="is-you">▲ You</span>
+          </div>
+        </aside>
       )}
 
       {/* Phase 9 mission result card */}
