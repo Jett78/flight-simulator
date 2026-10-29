@@ -78,6 +78,15 @@ const PEAKS: Peak[] = [
   // the departure corridor and the checkpoint route.
   { x: -980, z: -40, h: 88, r: 300 },
   { x: 180, z: -1080, h: 92, r: 300 },
+  // Near hills (live-check fix, 0.11.0): the big peaks are real
+  // but read as a flat horizon strip from the runway. These lower,
+  // closer hills east/west of the field are what a player standing
+  // on the runway actually SEES as hills. All are clear of the
+  // approach corridor and the checkpoint discs (verified by the
+  // M8 clearance test).
+  { x: 620, z: 260, h: 38, r: 210 },
+  { x: -540, z: 120, h: 34, r: 200 },
+  { x: 730, z: 400, h: 34, r: 200 },
 ];
 
 /** Village pad centre (south-east shore) and its flattened height. */
@@ -102,11 +111,11 @@ export function heightAt(x: number, z: number): number {
   // ~520 m out and top out around ±28 m, so the island read flat) —
   // now they begin ~430 m out with a broad swell underneath.
   const dAirport = airportBoxDistance(x, z);
-  const hillGrow = smoothstep(dAirport / 430);
+  const hillGrow = smoothstep(dAirport / 340);
   const hills =
-    (19 * Math.sin(x * 0.011 + 1.7) * Math.cos(z * 0.009 - 0.6) +
-      12 * Math.sin(x * 0.023 - 0.4) * Math.sin(z * 0.019 + 1.2) +
-      6.5 * Math.sin(x * 0.047) * Math.cos(z * 0.041) +
+    (22 * Math.sin(x * 0.011 + 1.7) * Math.cos(z * 0.009 - 0.6) +
+      14 * Math.sin(x * 0.023 - 0.4) * Math.sin(z * 0.019 + 1.2) +
+      7 * Math.sin(x * 0.047) * Math.cos(z * 0.041) +
       10 * Math.sin(x * 0.004 + 0.7) * Math.cos(z * 0.0035 - 1.1)) *
     hillGrow;
 
@@ -156,24 +165,30 @@ export function terrainMeshHeightAt(x: number, z: number): number {
   const step = TERRAIN_SIZE / TERRAIN_SUBDIVISIONS;
   const half = TERRAIN_SIZE / 2;
   if (x < -half || x > half || z < -half || z > half) return heightAt(x, z);
-  const gx = (x + half) / step;
-  const gz = (z + half) / step;
-  const i = Math.min(Math.floor(gx), TERRAIN_SUBDIVISIONS - 1);
-  const j = Math.min(Math.floor(gz), TERRAIN_SUBDIVISIONS - 1);
-  const fx = gx - i;
-  const fz = gz - j;
+  // Match CreateGround's exact vertex layout (Babylon
+  // groundBuilder): vertex (row, col) sits at x = -half + col*step,
+  // z = +half - row*step, and each quad is split along the diagonal
+  // from its south-east to its north-west corner. Interpolating the
+  // correct triangle makes this the rendered surface EXACTLY (the
+  // earlier bilinear version could still sit ~0.5 m off a facet on
+  // curved slopes).
+  const i = Math.min(Math.floor((x + half) / step), TERRAIN_SUBDIVISIONS - 1);
+  const j = Math.min(Math.floor((half - z) / step), TERRAIN_SUBDIVISIONS - 1);
   const x0 = -half + i * step;
-  const z0 = -half + j * step;
-  const h00 = heightAt(x0, z0);
-  const h10 = heightAt(x0 + step, z0);
-  const h01 = heightAt(x0, z0 + step);
-  const h11 = heightAt(x0 + step, z0 + step);
-  return (
-    h00 * (1 - fx) * (1 - fz) +
-    h10 * fx * (1 - fz) +
-    h01 * (1 - fx) * fz +
-    h11 * fx * fz
-  );
+  const zHigh = half - j * step;
+  const zLow = zHigh - step;
+  const fx = (x - x0) / step;
+  const fz = (z - zLow) / step;
+  const hSW = heightAt(x0, zLow);
+  const hSE = heightAt(x0 + step, zLow);
+  const hNW = heightAt(x0, zHigh);
+  if (fx + fz <= 1) {
+    // South-west triangle (SW, SE, NW)
+    return hSW * (1 - fx - fz) + hSE * fx + hNW * fz;
+  }
+  // North-east triangle (SE, NE, NW)
+  const hNE = heightAt(x0 + step, zHigh);
+  return hNE * (fx + fz - 1) + hSE * (1 - fz) + hNW * (1 - fx);
 }
 
 /** Terrain colour for a height/slope — stylised low-poly palette. */
@@ -363,7 +378,7 @@ export function createIsland(scene: Scene): IslandResult {
     const slope =
       Math.abs(terrainMeshHeightAt(x + 3, z) - h) +
       Math.abs(terrainMeshHeightAt(x, z + 3) - h);
-    if (slope > 1.7) continue; // a vertical trunk can't hug steep faces
+    if (slope > 2.1) continue; // a vertical trunk can't hug steep faces
     const s = 0.85 + rng() * 0.9;
     const sy = s * (0.9 + rng() * 0.35);
     const yaw = rng() * Math.PI * 2;

@@ -142,6 +142,15 @@ export function Hud({
   // Phase 10 audio UI state.
   const [audioPrefs, setAudioPrefs] = useState<AudioPrefs>(() => loadAudioPrefs());
   const soundRef = useRef<SoundEngine | null>(null);
+  // Release the AudioContext if the HUD ever unmounts (Phase 11:
+  // resource disposal — the engine is created lazily on first use).
+  useEffect(
+    () => () => {
+      soundRef.current?.dispose();
+      soundRef.current = null;
+    },
+    [],
+  );
   const getSound = () => {
     if (!soundRef.current) {
       soundRef.current = new SoundEngine(loadAudioPrefs());

@@ -130,6 +130,11 @@ export class FlightScene {
   // Phase 11 diagnostics: only created when the URL has ?perf=1.
   private perfInstrumentation: SceneInstrumentation | null = null;
   private perfOverlay: HTMLDivElement | null = null;
+  private perfFrames = 0;
+  private perfLastTime = 0;
+  private perfFps = 0;
+  private perfDraws = 0;
+  private perfTris = 0;
 
   // Scratch objects reused every frame (no per-frame allocation)
   private readonly _quat = new Quaternion();
@@ -144,6 +149,12 @@ export class FlightScene {
       preserveDrawingBuffer: false,
       powerPreference: "high-performance",
     });
+    // Phase 11: cap the effective render resolution at 2x device
+    // pixels. Beyond that the extra fragments buy almost nothing
+    // visually on this scene but cost real GPU time on high-DPR
+    // laptops/phones.
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr > 2) this.engine.setHardwareScalingLevel(dpr / 2);
 
     this.scene = new Scene(this.engine);
     // Clean sky
@@ -157,6 +168,7 @@ export class FlightScene {
 
     const shadowGenerator = this.createLights();
     this.aircraft = this.buildWorld(shadowGenerator);
+    this.freezeStaticWorld();
 
     this.input = new InputManager();
     // Phase 7: the controller judges ground contact, touchdowns and
@@ -197,6 +209,24 @@ export class FlightScene {
       el.textContent = "perf: warming up…";
       document.body.appendChild(el);
       this.perfOverlay = el;
+      // Latch the counters AFTER each render: the instrumentation
+      // resets them at frame start, so reading them pre-render
+      // (the first version did) always showed 0. FPS is counted
+      // manually over wall time for the same reason.
+      this.perfLastTime = performance.now();
+      this.scene.onAfterRenderObservable.add(() => {
+        if (!this.perfInstrumentation) return;
+        this.perfDraws = this.perfInstrumentation.drawCallsCounter.current;
+        this.perfTris = this.scene.getActiveIndices();
+        this.perfFrames++;
+        const now = performance.now();
+        const elapsed = now - this.perfLastTime;
+        if (elapsed >= 1000) {
+          this.perfFps = (this.perfFrames * 1000) / elapsed;
+          this.perfFrames = 0;
+          this.perfLastTime = now;
+        }
+      });
     }
 
     this.scene.onBeforeRenderObservable.add(() => this.update());
@@ -205,6 +235,20 @@ export class FlightScene {
     this.engine.runRenderLoop(() => {
       if (!this.disposed) this.scene.render();
     });
+  }
+
+  /**
+   * Phase 11: freeze the world matrices of everything that never
+   * moves (terrain, ocean, sky, airport, trees, village) so the
+   * engine skips recomputing ~1,500 matrices every frame. The
+   * aircraft subtree is excluded (it moves), and checkpoint
+   * markers are created later (they pulse), so neither is frozen.
+   */
+  private freezeStaticWorld(): void {
+    for (const mesh of this.scene.meshes) {
+      if (mesh === this.aircraft || mesh.isDescendantOf(this.aircraft)) continue;
+      mesh.freezeWorldMatrix();
+    }
   }
 
   private get cameraMode(): CameraMode {
@@ -260,12 +304,12 @@ export class FlightScene {
     if (this.telemetryTimer >= 0.15) {
       this.telemetryTimer = 0;
       this.onTelemetry?.(this.controller.getState());
-      if (this.perfOverlay && this.perfInstrumentation) {
+      if (this.perfOverlay) {
         const engine = this.engine;
         this.perfOverlay.textContent =
-          `fps ${engine.getFps().toFixed(0)} · draws ${this.perfInstrumentation.drawCallsCounter.current}` +
+          `fps ${this.perfFps.toFixed(0)} · draws ${this.perfDraws}` +
           `\nmeshes ${this.scene.getActiveMeshes().length}/${this.scene.meshes.length}` +
-          ` · tris ${(this.scene.getActiveIndices() / 3000).toFixed(0)}k` +
+          ` · tris ${(this.perfTris / 1000).toFixed(0)}k` +
           `\nscale ${engine.getHardwareScalingLevel().toFixed(2)} · dpr ${window.devicePixelRatio}` +
           ` · ${engine.getRenderWidth()}×${engine.getRenderHeight()}`;
       }

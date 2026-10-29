@@ -245,7 +245,23 @@ export function loadRecords(): MissionRecords {
     const raw = localStorage.getItem(RECORDS_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as MissionRecords;
-    return typeof parsed === "object" && parsed ? parsed : {};
+    if (typeof parsed !== "object" || !parsed) return {};
+    // Sanitize entry by entry (Phase 11 reliability): a hand-edited
+    // or partially corrupt save must not poison the best-score
+    // table with NaN/negative/string values.
+    const clean: MissionRecords = {};
+    for (const [id, rec] of Object.entries(parsed)) {
+      const num = (v: unknown) =>
+        typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+      if (rec && typeof rec === "object") {
+        clean[id as MissionId] = {
+          best: num(rec.best),
+          completions: num(rec.completions),
+          plays: num(rec.plays),
+        };
+      }
+    }
+    return clean;
   } catch {
     return {};
   }

@@ -8,7 +8,53 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
-## Phase 10 — Sound (current)
+## Phase 11 — Performance & reliability (current)
+
+An audit-and-fix phase (no new features), plus the scenery
+corrections from Jeet's live feedback.
+
+**Measured first.** A `?perf=1` overlay (FPS counted over wall
+time, draw calls and active triangles latched after each render)
+was added so numbers come from the live build, not guesses.
+Baseline scene cost at spawn: ~296 of 1,592 meshes active. Note:
+FPS inside automated check browsers is throttled/software-bound
+and says little about a real machine; draw calls / active
+meshes / triangles are the portable numbers.
+
+**Already good (verified in the audit, left alone):** the
+physics and camera code reuse scratch vectors (no per-frame
+allocation in the hot loop); the HUD writes instrument DOM
+directly via refs and only re-renders React on state *changes*;
+telemetry is gated to ~7 Hz; frame time is clamped and the
+physics accumulator capped, so tab switches can't explode the
+sim; `InputManager` already cleared keys on window blur and tab
+hide (now locked in by tests — no stuck throttle after alt-tab).
+
+**Optimizations applied:** render resolution capped at 2×
+device pixels (`setHardwareScalingLevel` when DPR > 2 — the
+scene gains nothing from 3× rendering); world matrices frozen
+for the ~1,500 static meshes (terrain, airport, trees, village)
+so the engine skips recomputing them every frame — the aircraft
+subtree and the pulsing checkpoint markers are excluded.
+
+**Reliability fixes:** mission best-score records are sanitized
+entry-by-entry on load (a corrupt save can no longer poison the
+table); the `SoundEngine`'s AudioContext is now released if the
+HUD unmounts. New `test-headless/reliability.test.ts` covers:
+blur/tab-hide key clearing, listener disposal, corrupt
+`localStorage` fallbacks for audio prefs and mission records,
+and crash → reset → full control (throttle responds again).
+
+**Scenery (from the 0.10.2 live-check failure):** tree/aircraft
+grounding now interpolates the exact rendered triangle
+(Babylon's ground-builder splits each quad SE→NW — verified
+against the installed source), and real hills were added near
+the field (east/west/south-east high ground of 60–85 m plus
+stronger rolling hills), since the distant peaks read as a flat
+strip from the runway. Checkpoint clearances re-verified
+(≥ 27.5 m); the full-circuit ground test still passes.
+
+## Phase 10 — Sound
 
 Lightweight audio and atmosphere, layered on without touching
 the flight model, controls or missions.
@@ -568,6 +614,7 @@ npx -y tsx@4 test-headless/physics.test.ts    # flight model: climb, stall, turn
 npx -y tsx@4 test-headless/ground.test.ts     # runway/terrain/water contact, touchdown judging, crashes, full circuit
 npx -y tsx@4 test-headless/missions.test.ts   # mission evaluator, scoring, checkpoint terrain clearance, navigation cues
 npx -y tsx@4 test-headless/audio.test.ts      # sound level mappings, mute/volume, context lifecycle (fake AudioContext)
+npx -y tsx@4 test-headless/reliability.test.ts # blur key-clearing, corrupt saves, crash→reset control
 npx -y tsx@4 test-headless/worldbuild.ts      # builds the whole scene headless: construction, markers, disposal
 ```
 
