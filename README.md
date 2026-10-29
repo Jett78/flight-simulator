@@ -2,7 +2,30 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 5 — Island environment (current)
+## Phase 6 — Flight HUD (current)
+
+A React HUD (kept fully separate from the Babylon layer) driven by
+the live simulation state:
+
+- **Update path:** one `requestAnimationFrame` loop in
+  `src/components/Hud.tsx` reads `FlightScene.getFlightState()` each
+  frame and writes values straight to DOM nodes via refs — no
+  per-frame React re-renders. React state covers only discrete UI:
+  camera mode, pause, and the help panel.
+- **Instruments:** airspeed tape (km/h) at the left edge, altitude
+  tape (m) + vertical-speed indicator (±20 m/s) at the right edge,
+  heading compass strip (bottom centre, wraps through 360°),
+  throttle bar with AoA (bottom-left), and an artificial horizon
+  with pitch/roll readouts (bottom-right). The centre of the screen
+  stays clear of the aircraft and runway.
+- **Extras:** stall banner, ON GROUND / AIRBORNE chip, camera-mode
+  indicator, Pause button (also the **P** key — physics freezes,
+  rendering continues), Reset aircraft / Reset view buttons, and a
+  collapsible Controls help panel.
+- Style: translucent dark panels, thin borders, tabular numerals;
+  the layout compresses at tablet/phone widths.
+
+## Phase 5 — Island environment
 
 A procedural island replaces the flat Phase 1 ground (`src/game/createIsland.ts`).
 One analytic height function drives the terrain mesh, its vertex

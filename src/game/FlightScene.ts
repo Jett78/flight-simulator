@@ -99,6 +99,7 @@ export class FlightScene {
   private telemetryTimer = 0;
   private physicsAccumulator = 0;
   private disposed = false;
+  private paused = false;
 
   // Scratch objects reused every frame (no per-frame allocation)
   private readonly _quat = new Quaternion();
@@ -159,8 +160,27 @@ export class FlightScene {
     return CAMERA_MODES[this.cameraModeIndex];
   }
 
+  /**
+   * Pause the simulation (Phase 6 HUD button / P key). Physics and
+   * the camera freeze; rendering continues so the window still
+   * resizes and repaints. Input edges are drained while paused so a
+   * key pressed during the pause never fires on resume.
+   */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.physicsAccumulator = 0;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
   /** One frame: input actions -> fixed-step physics -> camera -> HUD. */
   private update(): void {
+    if (this.paused) {
+      this.input.postUpdate();
+      return;
+    }
     // Clamp frame time so pauses/tab switches can't destabilise physics
     const frameDt = Math.min(this.engine.getDeltaTime() / 1000, MAX_FRAME_DT);
 
