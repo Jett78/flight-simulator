@@ -56,7 +56,7 @@ export default function App() {
           <li>
             <strong>C</strong> camera mode · <strong>R</strong> reset aircraft
           </li>
-          <li className="controls-tip">Hold Shift — at ~125 km/h pull S to take off</li>
+          <li className="controls-tip">Hold Shift — at ~110 km/h pull S to take off</li>
         </ul>
       </aside>
 

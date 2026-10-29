@@ -26,9 +26,13 @@ rate.
 - **Gentle stability assistance**: nose eases toward the flight path,
   wings auto-level hands-off, sideslip is damped.
 
-Key numbers: mass 4,600 kg, wing 65 m², max thrust 22 kN. Rotation at
-~34 m/s (~125 km/h), stall at ~28 m/s, hands-off climb ≈ 5–8 m/s at
-full throttle, level top speed ≈ 73 m/s.
+Key numbers: mass 4,600 kg, wing 80 m², max thrust 17.5 kN. Rotation
+at ~30 m/s (~110 km/h), stall at ~26 m/s, hands-off climb ≈ 7–10 m/s
+at full throttle. Pitch stability is a *speed trim* (fixed trim AoA
+plus a bank load-factor term): faster than trim speed and lift curves
+the path up, slower and the aircraft settles into a descent — and in a
+bank the trim adds the back-pressure that holds altitude in the turn.
+Roll has a soft bank limit (~35–50°) and a gentle auto-level.
 
 **State interface (for later HUD work):** `AircraftController.getState()`
 returns a `FlightState` — airspeed, altitude, heading, vertical speed,

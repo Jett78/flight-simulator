@@ -67,12 +67,12 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]); // throttle to ~100%
-  const tRoll = runUntil([], () => controller.getState().airspeed >= 38, 30);
+  const tRoll = runUntil([], () => controller.getState().airspeed >= 33, 30);
   const sRoll = controller.getState();
   check(
     "accelerates on ground roll",
-    sRoll.airspeed >= 38 && sRoll.grounded,
-    `reached 38 m/s in ${tRoll.toFixed(1)}s, grounded=${sRoll.grounded}`,
+    sRoll.airspeed >= 33 && sRoll.grounded,
+    `reached 33 m/s in ${tRoll.toFixed(1)}s, grounded=${sRoll.grounded}`,
   );
   // Rotate: hold S (nose up) and keep full throttle (throttle stays 1 without keys)
   runUntil(["KeyS"], () => controller.getState().altitude > 3, 12);
@@ -112,7 +112,7 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil([], () => controller.getState().airspeed >= 33, 30);
   runUntil(["KeyS"], () => controller.getState().altitude > 40, 20);
   run(1, []);
   const h0 = controller.getState().headingDeg;
@@ -125,11 +125,67 @@ function makeSim() {
   check("tapped bank produces a visible turn", dh > 5, `heading change after tap=${dh.toFixed(1)}°`);
 }
 
+// ---------- 3c. Compensated banked turn holds altitude ----------
+// Regression test for the live-test finding: an uncompensated banked
+// turn sank at ~8 m/s and touched down. With alpha-trim turn
+// compensation, a moderate hands-off turn must roughly hold altitude.
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]);
+  runUntil([], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["KeyS"], () => controller.getState().altitude > 55, 25);
+  run(1.5, []);
+  const before = controller.getState();
+  run(0.7, ["KeyD"]); // build a moderate bank
+  run(6, []); // hands-off turn
+  const after = controller.getState();
+  let dh = after.headingDeg - before.headingDeg;
+  if (dh < -180) dh += 360;
+  if (dh > 180) dh -= 360;
+  check(
+    "banked turn holds altitude (compensation)",
+    dh > 12 && before.altitude - after.altitude < 10 && !after.grounded,
+    `heading +${dh.toFixed(0)}°, alt ${before.altitude.toFixed(0)}m -> ${after.altitude.toFixed(0)}m`,
+  );
+}
+
+// ---------- 3d. High-speed banked turn (the actual live failure) ----------
+// Live trial: at 227-260 km/h a bank sank at ~8 m/s and touched down.
+// Replicate: build speed in a shallow dive, then turn hands-off.
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]);
+  runUntil([], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["KeyS"], () => controller.getState().altitude > 160, 60);
+  // Build speed in a dive, level out, and bank promptly (speed bleeds
+  // back toward trim speed over ~20 s, so don't wait). This mirrors
+  // the live scenario: fast shallow flight at 200+ km/h.
+  runUntil(["KeyW"], () => controller.getState().airspeed >= 57 || controller.getState().altitude < 110, 12);
+  runUntil(["KeyS"], () => controller.getState().verticalSpeed >= -2, 6);
+  run(0.3, []);
+  const before = controller.getState();
+  run(0.7, ["KeyD"]);
+  run(6, []);
+  const after = controller.getState();
+  let dh = after.headingDeg - before.headingDeg;
+  if (dh < -180) dh += 360;
+  if (dh > 180) dh -= 360;
+  check(
+    "high-speed banked turn does not sink",
+    before.airspeed > 48 &&
+      before.altitude > 40 &&
+      dh > 10 &&
+      before.altitude - after.altitude < 12 &&
+      !after.grounded,
+    `v=${before.airspeed.toFixed(0)}m/s (${(before.airspeed * 3.6).toFixed(0)} km/h), heading +${dh.toFixed(0)}°, alt ${before.altitude.toFixed(0)}m -> ${after.altitude.toFixed(0)}m`,
+  );
+}
+
 // ---------- 4. Stall + recovery ----------
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil([], () => controller.getState().airspeed >= 33, 30);
   runUntil(["KeyS"], () => controller.getState().altitude > 80, 30);
   run(1.5, []); // settle in climb attitude hands-off (stall entry needs altitude in hand)
   // Kill the throttle and hold the nose up hard -> stall
@@ -181,7 +237,7 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil([], () => controller.getState().airspeed >= 33, 30);
   runUntil(["KeyS"], () => controller.getState().altitude > 30, 15);
   run(1, []);
   const altBefore = controller.getState().altitude;

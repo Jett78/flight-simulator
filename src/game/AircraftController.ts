@@ -48,10 +48,10 @@ import type { InputManager } from "./InputManager";
 // near 1.0 (first tuning pass) made the aircraft climb almost
 // vertically hands-off — physically consistent, wrong game feel.
 const MASS = 4600; // kg
-const MAX_THRUST = 22000; // N at 100% throttle, static (sea level, v=0)
-const THRUST_LAPSE_SPEED = 150; // thrust fades linearly with speed...
+const MAX_THRUST = 17500; // N at 100% throttle, static (sea level, v=0)
+const THRUST_LAPSE_SPEED = 170; // thrust fades linearly with speed...
 const THRUST_LAPSE_FLOOR = 0.3; // ...down to this fraction at high speed
-const WING_AREA = 65; // m^2
+const WING_AREA = 80; // m^2 (big wing: rotation ~30 m/s, gentle climb ~7 m/s)
 const AIR_DENSITY = 1.225; // kg/m^3, sea level
 const GRAVITY = 9.81; // m/s^2
 const CL_ALPHA = 5.7; // lift coefficient per radian of AoA
@@ -62,6 +62,7 @@ const STALL_NEG_DEG = 12;
 const CD_PARASITE = 0.05;
 const CD_INDUCED_K = 0.05;
 const CD_STALL = 0.3;
+const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch trim below
 
 // --- Control constants ---
 const THROTTLE_RATE = 0.45; // per second while Shift/Ctrl held
@@ -368,7 +369,22 @@ export class AircraftController {
       node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * effectiveness * dt, Space.LOCAL);
     }
     if (this.rollInput !== 0) {
-      node.rotate(AXIS_BACK, this.rollInput * ROLL_RATE * effectiveness * dt, Space.LOCAL);
+      // Soft bank limit (~35-50 degrees): rolling further into a steep
+      // bank fades out; rolling back toward level always works. Keeps
+      // beginners out of the uncompensated spiral-dive regime.
+      this.computeBasis();
+      const bankLeft = Math.asin(clamp(this._right.y, -1, 1));
+      let rollAuthority = 1;
+      if (this.rollInput > 0 && bankLeft > 0.61) {
+        rollAuthority = 1 - smoothstep((bankLeft - 0.61) / 0.26);
+      } else if (this.rollInput < 0 && bankLeft < -0.61) {
+        rollAuthority = 1 - smoothstep((-bankLeft - 0.61) / 0.26);
+      }
+      node.rotate(
+        AXIS_BACK,
+        this.rollInput * ROLL_RATE * effectiveness * rollAuthority * dt,
+        Space.LOCAL,
+      );
     }
     if (this.yawInput !== 0) {
       node.rotate(AXIS_UP, this.yawInput * YAW_RATE * effectiveness * dt, Space.LOCAL);
@@ -424,10 +440,32 @@ export class AircraftController {
       node.rotate(WORLD_UP, yawRate * dt, Space.WORLD);
     }
 
-    // Pitch stability: ease the nose toward the flight-path angle
-    const pitchError =
-      Math.asin(clamp(this._velDir.y, -1, 1)) - Math.asin(clamp(this._forward.y, -1, 1));
-    const pitchRate = clamp(0.55 * pitchError, -0.28, 0.28) * stability;
+    // Pitch trim — a SPEED trim, like a real elevator trim tab. The
+    // target AoA is the greater of:
+    //   (a) a fixed trim AoA (~6.6 deg, level flight at ~42 m/s), and
+    //   (b) the AoA needed to hold altitude at the current speed
+    //       under the bank load factor 1/cos(bank).
+    // Trimming to a fixed AoA gives speed stability: faster than trim
+    // speed -> excess lift curves the path up and speed bleeds back;
+    // slower -> a gentle descent. (Evaluating (b) alone at the
+    // *current* speed was tried first: the target shrank as speed
+    // rose, so a hands-off "cruise" settled into a permanent shallow
+    // dive at ~70 m/s and flew into the ground — see the headless
+    // cruise trace.) In a bank, term (b) adds exactly the
+    // back-pressure a pilot would apply, so turns hold altitude.
+    // The restoring rate is a firm spring (gain 2.0, cap 0.9 rad/s):
+    // capped-gentle versions lost a fight against the pilot's pitch
+    // rate and let a held climb mush into the stall. Nose-down
+    // authority is NOT faded by the stall — that is what breaks the
+    // stall even with the stick held back, as in a real aircraft.
+    const alphaRad = (alphaDeg * Math.PI) / 180;
+    const dynamicPressure = 0.5 * AIR_DENSITY * speed * speed;
+    const clLevel = (MASS * GRAVITY) / Math.max(dynamicPressure * WING_AREA, 1);
+    const bankCos = Math.max(Math.cos(bankRight), 0.6); // load factor cap ~1.67
+    const alphaForLoad = clLevel / bankCos / CL_ALPHA;
+    const alphaTarget = clamp(Math.max(TRIM_ALPHA, alphaForLoad), -0.02, 0.19);
+    let pitchRate = clamp(2.0 * (alphaTarget - alphaRad), -0.9, 0.9);
+    if (pitchRate > 0) pitchRate *= stability; // only nose-up fades in a stall
     node.rotate(AXIS_RIGHT, pitchRate * dt, Space.LOCAL);
   }
 
