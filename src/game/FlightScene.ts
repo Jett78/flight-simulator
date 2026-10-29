@@ -68,8 +68,13 @@ const CAMERA_MODES: CameraMode[] = [
   },
   {
     name: "Cockpit",
-    offset: new Vector3(0, 1.7, -4.8),
-    lookOffset: new Vector3(0, 1.15, -30),
+    // Phase 8: the eye point moves to the model's cabin (the old
+    // offset sat at the placeholder's long nose, which left the
+    // real model's nose out of frame). From here the cowl and nose
+    // fill the lower frame; with the placeholder fallback the same
+    // spot sits just above its fuselage, so both read correctly.
+    offset: new Vector3(0, 1.55, -1.4),
+    lookOffset: new Vector3(0, 1.0, -30),
     posDamp: 40,
     targetDamp: 40,
   },
