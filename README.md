@@ -2,6 +2,12 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
+**Play it live:** https://flightsimulator.jeetdeula.com.np/ ·
+https://flight-simulator-nepal-tech.vercel.app
+
+No backend, no accounts, no paid APIs — everything (3D world,
+flight physics, missions, sound) runs locally in the browser.
+
 ## Phase 10 — Sound (current)
 
 Lightweight audio and atmosphere, layered on without touching
@@ -415,23 +421,125 @@ What's in the scene:
 
 ## Tech stack
 
-- React 19, Vite 8, TypeScript
-- Babylon.js (`@babylonjs/core` 9.x) used directly — no Three.js / React Three Fiber
-- npm
+| Layer | Choice | Notes |
+| --- | --- | --- |
+| Language | **TypeScript ~7.0** | Strict mode, project references (`tsc -b`) |
+| UI shell | **React 19.3** + React DOM | HUD overlay only — all 3D is Babylon, React never touches the scene graph |
+| 3D engine | **Babylon.js 9.32** (`@babylonjs/core`, `@babylonjs/loaders`) | Used directly via subpath imports — no Three.js, no React Three Fiber. `@babylonjs/loaders` provides the glTF loader for the aircraft model |
+| Build / dev server | **Vite 8.3** + `@vitejs/plugin-react` 6.1 | `npm run dev`, `npm run build` (type-check + bundle) |
+| Lint | **oxlint** 1.89 | `npm run lint` |
+| Tests | Custom headless suites on Babylon's **NullEngine**, run with **tsx** | No test framework dependency; see [Testing](#testing) |
+| Package manager | **npm** | Lockfile committed |
+| Hosting | **Vercel** (git-linked to `main`) | Every push to `main` deploys production to both live URLs above |
+| 3D asset | **Cesium Air** glTF (© Cesium, **CC BY 4.0**) | Embedded as text at `public/models/cesium-air.gltf` (see `ASSETS.md`); converted from the binary GLB so it can live in git as text |
+| Audio | **WebAudio API**, fully procedural | Engine/wind are synthesized oscillators + filtered noise; event sounds are synthesized stingers. Zero audio files |
+| Persistence | `localStorage` only | Sound prefs and mission best scores; no server state |
+
+## Architecture
+
+```
+main.tsx ──> App.tsx ──> SceneCanvas.tsx ──> FlightScene (Babylon Engine/Scene)
+                  │                              │  ├─ world builders: createAirport, createIsland
+                  │                              │  ├─ aircraftModel (glTF) / createAirplane (fallback)
+                  │                              │  ├─ AircraftController (physics, 120 Hz fixed step)
+                  │                              │  ├─ InputManager (keyboard state)
+                  │                              │  └─ checkpointMarkers (beacon / route / rings)
+                  └──> Hud.tsx (React overlay)
+                             ├─ instruments (airspeed, altitude, VS, throttle, compass, horizon)
+                             ├─ missions UI (menu, objective bar, minimap) ──> missions.ts (pure evaluator)
+                             └─ SoundEngine (procedural WebAudio) ──> audio.ts
+```
+
+Key design rules:
+
+- **Babylon owns the 3D, React owns the 2D.** `FlightScene` runs the
+  render loop and the physics; the HUD receives telemetry snapshots
+  and sends intents (pause, reset, camera, mission selection, mute)
+  through callbacks. The two sides never reach into each other.
+- **Pure logic is kept pure.** The mission evaluator
+  (`missions.ts`), the terrain heightfield (`heightAt` in
+  `createIsland.ts`) and the audio level mappings (`audio.ts`) have
+  no scene/DOM dependencies, which is what makes the headless test
+  suites possible.
+- **One source of truth per fact.** Runway geometry lives in
+  `runway.ts` and is read by the mesh builder, the physics ground
+  sampler and the missions. Terrain height lives in `createIsland.ts`
+  and is read by the terrain mesh, the trees, the ground sampler and
+  the checkpoint-clearance test.
+- **Coordinate convention everywhere:** forward = **−Z**, up = **+Y**,
+  right = **+X**. The aircraft spawns at (0, 2.41, 68) facing −Z with
+  178 m of the 220 m runway ahead.
+
+## Code documentation
+
+### `src/game/` — the simulator
+
+| Module | Responsibility |
+| --- | --- |
+| `FlightScene.ts` | Engine + scene setup (sky, fog, lights, shadow-casting sun), world construction, the three cameras (chase / chase-far / adaptive cockpit), the frame loop — physics substeps at a fixed 120 Hz, camera smoothing, checkpoint-marker animation — plus resize handling and full disposal on unmount. |
+| `AircraftController.ts` | The flight model and aircraft state machine. Forces: thrust, lift, drag, gravity; stall beyond +15° / −12° angle of attack; banked turns; ground contact through an injected `GroundSampler`; touchdown judging and all crash rules; spring-loaded throttle. Deliberately decoupled from Babylon scene objects so it runs headless. |
+| `InputManager.ts` | Keyboard state for the frozen control scheme (below). Tracks held keys; the spring throttle lives in the controller, this class only reports input. |
+| `createAirport.ts` | The airfield meshes: 220 m runway with markings, taxiway, apron, hangars, terminal (with window-facade texture), office block, control tower. |
+| `createIsland.ts` | The procedural island. `heightAt(x, z)` is the analytic heightfield (coastline falloff, rolling hills, mountain peaks, flattened airport/village pads, and a kept-clear approach corridor). The terrain mesh is built from it at 200 subdivisions; `terrainMeshHeightAt` bilinearly interpolates the **rendered** surface and is what trees and the physics sampler stand on — using the analytic height instead left trees floating up to ~2 m on slopes. Also: ~850 instanced two-tier trees, the village, the lighthouse, ocean, sky dome, and vertex-colour terrain painting (sand / grass / forest / rock / snow). |
+| `runway.ts` | `RUNWAY` constants (18 m × 220 m, surface y = 0.16) and `createGroundSampler()` — answers "what is under the aircraft" (runway / terrain / water + slope) for physics and landing judging. |
+| `aircraftModel.ts` | Loads the Cesium Air glTF asynchronously and auto-fits it by **measurement** (length, span, ground offset, nose direction from the propeller nodes). Any load failure falls back to the primitive placeholder; the aircraft stays hidden until exactly one model is ready, so there is never a double aircraft or a flash of the wrong one. |
+| `createAirplane.ts` | The placeholder aircraft built from Babylon primitives (fallback + spawn pose). |
+| `checkpointMarkers.ts` | Checkpoint Flight guidance visuals: the pulsing gold beacon pillar over the next ring, the route ribbon through all five rings (gold = active leg, green = flown, blue = ahead), larger state-coloured rings, and billboarded number badges. Fog is disabled on these materials so guidance stays readable at distance. |
+| `missions.ts` | Mission definitions and the pure `MissionRun` evaluator (fed a `FlightState` snapshot each tick): Checkpoint Flight (5 rings, capture radius 42 m, order enforced), Takeoff & Climb (airborne at ≥ 120 m), Landing Challenge (judged only by the Phase 7 touchdown verdict). Also `checkpointNavigation` (bearing / turn / climb cues for the HUD) and best-score records in `localStorage` (`flightsim.missions.v1`). Scoring: checkpoints `max(100, 1500 − 10/s)`, takeoff `max(100, 1000 − 10/s)`, landing 1000 (smooth) / 600 (hard) − 5/s, minimum 100; failure scores 0. |
+| `audio.ts` | The procedural `SoundEngine`: engine = two detuned oscillators through a lowpass whose gain/frequency follow throttle and airspeed (pure mapping helpers, unit-tested); wind = looped noise through a bandpass; one-shot stingers for takeoff, touchdown (hard = lower/louder), crash, checkpoint pass and mission complete. The `AudioContext` is created only on the first user gesture (browser autoplay rules). Mute + volume persist in `localStorage` (`flightsim.audio.v1`). |
+| `materials.ts` | Small helper for flat `StandardMaterial`s used across the world builders. |
+
+### `src/` — the shell
+
+| File | Responsibility |
+| --- | --- |
+| `main.tsx` | React entry point. |
+| `App.tsx` | Owns the `FlightScene` lifecycle and passes scene intents (checkpoints, pause, reset, camera) down to the HUD. |
+| `components/SceneCanvas.tsx` | Hosts the `<canvas>`, creates the `FlightScene` on mount and disposes it on unmount. |
+| `components/Hud.tsx` + `Hud.css` | The whole 2D overlay: badge, action buttons (missions, sound, volume, pause, reset, camera, help), instrument tapes, compass + horizon, STALL / ground-status lines, crash overlay, mission menu, objective bar with steering arrow, the SVG mission minimap (island, runway, route, ring states, live aircraft marker), result card, and the toast. Fires the sound events on state edges (liftoff, touchdown, crash, checkpoint, mission complete). |
+
+### Flight model summary
+
+- Fixed **120 Hz** timestep, force-based: thrust (max 21,000 N),
+  lift from wing area 92 m², drag, gravity. Stall when angle of
+  attack exceeds **+15° / −12°**.
+- **Touchdown judging:** sink ≤ 2.5 m/s = smooth, ≤ 5.5 = hard,
+  off-runway landings on terrain are allowed.
+- **Crash** on: sink > 5.5 m/s, |roll| > 28°, pitch < −12°, ground
+  slope > 15°, terrain contact above 45 m/s, any water contact, or
+  hitting a steep (> 24°) face above 6 m/s. A crash latches the
+  controls until reset (**R**).
+- **Controls (frozen scheme):** W = nose down, S = nose up, A/D =
+  bank, Q/E = yaw, hold **Shift** = throttle up (spring-loaded —
+  release and it decays to zero), **Space** = fast throttle cut,
+  **C** = camera, **P** = pause, **R** = reset.
 
 ## Project structure
 
 ```
 src/
-  App.tsx                  React shell + HUD overlay
-  App.css                  HUD / layout styles
+  main.tsx                   React entry
+  App.tsx                    Shell; owns the FlightScene lifecycle
   components/
-    SceneCanvas.tsx        React host for the canvas; creates/disposes the scene
+    SceneCanvas.tsx          Canvas host; creates/disposes the scene
+    Hud.tsx                  Instruments, missions UI, minimap, sound controls
+    Hud.css                  HUD styles
   game/
-    FlightScene.ts         Engine + Scene, camera, lights, shadows, resize, dispose
-    createAirport.ts       Ground, runway, taxiway, apron, buildings, tower, trees
-    createAirplane.ts      Placeholder airplane from primitives
-    materials.ts           Small StandardMaterial helper
+    FlightScene.ts           Engine/scene, cameras, frame + physics loop
+    AircraftController.ts    Flight model, ground contact, crash rules
+    InputManager.ts          Keyboard state
+    createAirport.ts         Runway, taxiway, apron, buildings, tower
+    createIsland.ts          Procedural island, terrain heightfield, trees
+    runway.ts                Runway constants + physics ground sampler
+    aircraftModel.ts         Cesium Air glTF loader with auto-fit + fallback
+    createAirplane.ts        Primitive placeholder aircraft
+    checkpointMarkers.ts     Beacon, route ribbon, rings, number badges
+    missions.ts              Pure mission evaluator + scoring + records
+    audio.ts                 Procedural WebAudio sound engine
+    materials.ts             StandardMaterial helper
+public/
+  models/cesium-air.gltf     Aircraft model (CC BY 4.0, see ASSETS.md)
+test-headless/               Headless suites (NullEngine + tsx)
 ```
 
 ## Run locally
@@ -441,17 +549,36 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (default http://localhost:5173) in your browser.
-You should see the airplane centred in a chase view on the runway, with the
-airport around it. Hold Shift to throttle up and take off — full control
-list and per-control tests are in the Phase 3 section above.
+Then open the URL Vite prints (default http://localhost:5173). You
+should see the aircraft on the runway in a chase view. Click once
+(sound unlocks), hold **Shift** to throttle up, and pull back with
+**S** once you are fast — the full control list and per-phase
+verification notes are in the phase sections above.
 
-## Checks
+## Testing
+
+All checks are headless (Babylon `NullEngine` — no GPU, no browser)
+except the live visual verification done on the deployed site.
 
 ```bash
 npm run build   # TypeScript check (tsc -b) + production build
 npm run lint    # oxlint
+
+npx -y tsx@4 test-headless/physics.test.ts    # flight model: climb, stall, turns, throttle spring
+npx -y tsx@4 test-headless/ground.test.ts     # runway/terrain/water contact, touchdown judging, crashes, full circuit
+npx -y tsx@4 test-headless/missions.test.ts   # mission evaluator, scoring, checkpoint terrain clearance, navigation cues
+npx -y tsx@4 test-headless/audio.test.ts      # sound level mappings, mute/volume, context lifecycle (fake AudioContext)
+npx -y tsx@4 test-headless/worldbuild.ts      # builds the whole scene headless: construction, markers, disposal
 ```
+
+## Deployment
+
+Pushing to `main` on GitHub triggers a Vercel production build
+(framework: Vite). The same deployment serves
+https://flightsimulator.jeetdeula.com.np/ and
+https://flight-simulator-nepal-tech.vercel.app. The app version
+lives in `package.json` and tracks the phase history documented
+at the top of this README.
 
 ## Roadmap
 
