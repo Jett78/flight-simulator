@@ -338,14 +338,30 @@ export class FlightScene {
     // Async and fully optional — on any failure the placeholder
     // stays and the simulation is unaffected. On success, re-seat
     // the cockpit camera to the model's cabin.
+    //
+    // The aircraft starts HIDDEN and is revealed exactly once —
+    // when the model is in place, or with the placeholder if the
+    // load fails / takes too long. (Jeet: seeing one plane morph
+    // into another a second after load read as a bug.)
+    airplane.setEnabled(false);
+    let revealed = false;
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      airplane.setEnabled(true);
+    };
+    const revealTimer = setTimeout(reveal, 6000);
     void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh)).then(
       (loaded) => {
-        if (!loaded) return;
-        const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
-        if (cockpit) {
-          cockpit.offset.copyFrom(COCKPIT_MODEL.offset);
-          cockpit.lookOffset.copyFrom(COCKPIT_MODEL.lookOffset);
+        clearTimeout(revealTimer);
+        if (loaded) {
+          const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
+          if (cockpit) {
+            cockpit.offset.copyFrom(COCKPIT_MODEL.offset);
+            cockpit.lookOffset.copyFrom(COCKPIT_MODEL.lookOffset);
+          }
         }
+        reveal();
       },
     );
     return airplane;

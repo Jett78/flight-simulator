@@ -33,11 +33,11 @@ import type { InputManager } from "./InputManager";
  *
  * Control conventions (unchanged from Phase 3):
  *   forward = -Z, up = +Y, right = +X
- *   W = nose down,  S = nose up        (yoke/stick style)
- *   A = bank left,  D = bank right
+ *   A = bank left,  D = bank right     (the direction keys)
  *   Q = yaw left,   E = yaw right
- *   Shift = throttle up (hold), Ctrl = fast throttle cut,
+ *   W = throttle up (hold), S = fast throttle cut,
  *   release both = power decays to zero (spring-loaded throttle)
+ *   ArrowUp / ArrowDown = pitch nose up / nose down
  *
  * The controller owns position/velocity/orientation state only; it
  * never touches the camera, the scene, or rendering.
@@ -66,12 +66,12 @@ const CD_STALL = 0.3;
 const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch trim below
 
 // --- Control constants ---
-// Throttle is spring-loaded (Jeet's call, 2026-10-29): hold Shift and
+// Throttle is spring-loaded (Jeet's call, 2026-10-29): hold W and
 // power rises; release every throttle key and power falls back toward
-// zero on its own; Ctrl is a fast cut. There is no "set and forget"
+// zero on its own; S is a fast cut. There is no "set and forget"
 // lever position — the HUD throttle bar shows the live value.
-const THROTTLE_UP_RATE = 0.6; // per second while Shift held
-const THROTTLE_DOWN_RATE = 1.2; // per second while Ctrl held (fast cut)
+const THROTTLE_UP_RATE = 0.6; // per second while W held
+const THROTTLE_DOWN_RATE = 1.2; // per second while S held (fast cut)
 const THROTTLE_DECAY_RATE = 0.5; // per second when no throttle key held
 const PITCH_RATE = 0.8; // rad/s at full deflection & full effectiveness
 const ROLL_RATE = 1.6; // rad/s
@@ -194,7 +194,7 @@ export class AircraftController {
   private readonly aircraft: TransformNode;
   private readonly startPosition: Vector3;
 
-  /** 0..1 throttle setting (Shift/Ctrl). */
+  /** 0..1 throttle setting (W/S). */
   throttle = 0;
   /** World-space velocity (m/s) — the heart of the Phase 4 model. */
   readonly velocity = new Vector3();
@@ -309,21 +309,27 @@ export class AircraftController {
     const wasGrounded = node.position.y <= contactY + 0.001;
 
     // ---------- Controls ----------
-    // Spring-loaded throttle: Shift raises, Ctrl cuts fast, and with
-    // neither held the power decays to zero (see constants above).
-    if (input.isDown("ShiftLeft", "ShiftRight")) {
+    // Spring-loaded throttle (Jeet's scheme): W raises, S cuts
+    // fast, and with neither held the power decays to zero.
+    if (input.isDown("KeyW")) {
       this.throttle = Math.min(1, this.throttle + THROTTLE_UP_RATE * dt);
-    } else if (input.isDown("ControlLeft", "ControlRight")) {
+    } else if (input.isDown("KeyS")) {
       this.throttle = Math.max(0, this.throttle - THROTTLE_DOWN_RATE * dt);
     } else {
       this.throttle = Math.max(0, this.throttle - THROTTLE_DECAY_RATE * dt);
     }
-    this.pitchInput = damp(
-      this.pitchInput,
-      (input.isDown("KeyS") ? 1 : 0) + (input.isDown("KeyW") ? -1 : 0),
-      INPUT_RESPONSE,
-      dt,
-    );
+    // Pitch: arrow keys. Plus auto-rotation — Jeet's scheme puts
+    // the throttle on W, so a pilot holding only W must still get
+    // airborne: on the ground, fast, with real power applied, the
+    // trim rotates the aircraft on its own (a touch-and-go at full
+    // power re-rotates the same way; a normal landing rollout is
+    // at low throttle and never triggers it).
+    let pitchTarget =
+      (input.isDown("ArrowUp") ? 1 : 0) + (input.isDown("ArrowDown") ? -1 : 0);
+    if (this.grounded && this.throttle > 0.5 && this.velocity.length() > 24) {
+      pitchTarget = Math.max(pitchTarget, 0.85);
+    }
+    this.pitchInput = damp(this.pitchInput, pitchTarget, INPUT_RESPONSE, dt);
     this.rollInput = damp(
       this.rollInput,
       (input.isDown("KeyA") ? 1 : 0) + (input.isDown("KeyD") ? -1 : 0),

@@ -302,7 +302,7 @@ export function Hud({
           <aside className="hud-panel hud-help" aria-label="Flight controls">
             <ul>
               <li>
-                <strong>W / S</strong> pitch — W nose down · S nose up
+                <strong>W / S</strong> throttle — hold W for power · S cuts power
               </li>
               <li>
                 <strong>A / D</strong> roll — bank left / right
@@ -311,16 +311,17 @@ export function Hud({
                 <strong>Q / E</strong> yaw — left / right
               </li>
               <li>
-                <strong>Shift (hold) / Ctrl</strong> throttle — hold Shift for
-                power, release and power falls; Ctrl cuts fast
+                <strong>↑ / ↓</strong> pitch — nose up / nose down (release W
+                and power falls back on its own)
               </li>
               <li>
                 <strong>C</strong> camera · <strong>R</strong> reset aircraft ·{" "}
                 <strong>P</strong> pause
               </li>
               <li className="hud-help-tip">
-                Hold Shift — at ~100 km/h pull S to take off. Land back on
-                the runway gently: sink under ~2.5 m/s, wings level.
+                Hold W to build power — past ~100 km/h the plane lifts
+                off; tap ↑ to climb sooner. Land back on the runway
+                gently: sink under ~2.5 m/s, wings level.
               </li>
             </ul>
           </aside>

@@ -23,6 +23,14 @@ The placeholder look is upgraded without touching the flight model:
 - **Trees:** still fully instanced (4 draw calls for ~650 trees),
   now with two foliage tones and a second cone tier stepped wide
   and high enough to read as a two-tier pine silhouette.
+- **Post-release fixes (0.8.1, Jeet's live feedback):** the
+  aircraft no longer flashes the placeholder for a second before
+  the model swaps in — it stays hidden until exactly one aircraft
+  (model, or placeholder on load failure) is ready. And the
+  control scheme is his: **W/S are the throttle** (Shift/Ctrl are
+  gone), A/D bank left/right, pitch moves to the **arrow keys**,
+  and an auto-rotation assist lifts the plane hands-off at speed
+  so holding W alone takes off.
 - **Cockpit camera:** re-seats itself to the model's cabin when
   the model loads (the fitted fuselage sits low, so the eye sits
   just above its roof with the nose band in the lower frame); the
@@ -69,8 +77,8 @@ The world is now solid, and arrivals are judged:
   *Takeoff roll*, *Airborne*, *Approaching runway*, and the
   touchdown verdict with its sink rate — quiet the rest of the time.
 - **Also in this release** (Jeet's live fixes): the throttle is
-  spring-loaded — hold **Shift** for power, release and it falls
-  back to zero, **Ctrl** is a fast cut; and the takeoff is brisker
+  spring-loaded — hold **W** for power, release and it falls
+  back to zero, **S** is a fast cut; and the takeoff is brisker
   (21 kN thrust, 92 m² wing) — liftoff after ~116 m of the 178 m
   available, at ~101 km/h.
 - Verified headlessly (`test-headless/ground.test.ts`, 13 checks):
@@ -133,7 +141,7 @@ kept clear by design.
 ### Verify Phase 5 in the browser
 
 On load you should see the runway ahead, green hills and blue ocean
-around the airfield, and mountains in the distance. Take off (Shift,
+around the airfield, and mountains in the distance. Take off (W,
 then S at ~110 km/h), climb and turn: beaches ring the island, the
 village sits on the south-east shore, the lighthouse stands on the
 east coast, and snow-capped peaks ring the island. Fly a full circuit
@@ -190,13 +198,13 @@ idle-throttle descent, reset, and frame-rate independence.
 
 ### Verify Phase 4 in the browser
 
-1. **Accelerate** — hold **Shift**: throttle % rises, speed builds
+1. **Accelerate** — hold **W**: throttle % rises, speed builds
    down the runway.
 2. **Take off** — at ~125 km/h hold **S**: the nose rises and the
    aircraft lifts off (below that speed, S does almost nothing — no
    airflow, no control power, no lift).
 3. **Climb/descend** — keep full throttle and a gentle nose-up attitude
-   to climb; cut throttle with **Ctrl** and it settles into a descent.
+   to climb; cut throttle with **S** and it settles into a descent.
 4. **Turn** — tap **A** or **D** to bank ~25°, release, and watch the
    heading change on the HUD as the tilted lift curves the flight path;
    **Q/E** adds yaw.
@@ -224,11 +232,10 @@ rendering and UI.
 
 | Key | Action |
 | --- | --- |
-| **W / S** | Pitch — **W nose down, S nose up** (yoke style: push = descend, pull = climb) |
+| **W / S** | Throttle — **hold W** for power (release and power falls back to zero), **S** fast cut |
 | **A / D** | Roll — bank left / bank right |
 | **Q / E** | Yaw — nose left / nose right |
-| **Shift** | Throttle up (hold — release and power falls back to zero) |
-| **Ctrl** | Fast throttle cut (hold) |
+| **↑ / ↓** | Pitch — nose up / nose down |
 | **C** | Cycle camera: Chase → Chase far → Cockpit |
 | **R** | Reset aircraft to the runway start (position, level, 0 speed/throttle) |
 
@@ -252,8 +259,8 @@ Notes:
 
 Click the page once so it has focus, then:
 
-1. **Throttle/speed** — hold **Shift**: throttle % climbs in the HUD,
-   speed builds and the plane rolls down the runway. Hold **Ctrl** to
+1. **Throttle/speed** — hold **W**: throttle % climbs in the HUD,
+   speed builds and the plane rolls down the runway. Hold **S** to
    throttle back down and slow.
 2. **Pitch** — at speed, hold **S** to raise the nose and climb; hold
    **W** to push the nose down and descend.
@@ -322,7 +329,7 @@ npm run dev
 
 Then open the URL Vite prints (default http://localhost:5173) in your browser.
 You should see the airplane centred in a chase view on the runway, with the
-airport around it. Hold Shift to throttle up and take off — full control
+airport around it. Hold W to throttle up and take off — full control
 list and per-control tests are in the Phase 3 section above.
 
 ## Checks

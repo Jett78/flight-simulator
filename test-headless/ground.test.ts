@@ -78,7 +78,7 @@ function pilotStep(
   if (s.airspeed < cap - 3) powerOn = true;
   if (mode === "climb") powerOn = true;
   pilotLatch.set(sim, powerOn);
-  if (powerOn) keys.add("ShiftLeft");
+  if (powerOn) keys.add("KeyW");
   // Steering (airborne only): bank toward the target bearing.
   if (target && !s.grounded) {
     const bearing =
@@ -89,8 +89,8 @@ function pilotStep(
   }
   // Pitch toward the target vertical speed.
   if (!s.grounded || s.airspeed > 27) {
-    if (s.verticalSpeed < targetVS - 0.4) keys.add("KeyS");
-    else if (s.verticalSpeed > targetVS + 0.4) keys.add("KeyW");
+    if (s.verticalSpeed < targetVS - 0.4) keys.add("ArrowUp");
+    else if (s.verticalSpeed > targetVS + 0.4) keys.add("ArrowDown");
   }
   sim.step([...keys]);
 }
@@ -101,8 +101,8 @@ function takeoffAndClimb(sim: ReturnType<typeof makeSim>) {
   while (t < 90) {
     const s = sim.controller.getState();
     if (s.grounded) {
-      if (s.airspeed > 27) sim.step(["ShiftLeft", "KeyS"]); // rotate
-      else sim.step(["ShiftLeft"]);
+      if (s.airspeed > 27) sim.step(["KeyW", "ArrowUp"]); // rotate
+      else sim.step(["KeyW"]);
     } else if (s.altitude < 110) {
       pilotStep(sim, null, 4, "climb");
     } else {
@@ -136,6 +136,27 @@ function takeoffAndClimb(sim: ReturnType<typeof makeSim>) {
   );
 }
 
+// ---------- G2b. W-only takeoff: no pitch keys at all ----------
+// Jeet's control scheme puts throttle on W and pitch on the arrow
+// keys, so a beginner holding only W must still get airborne: the
+// trim system rotates the aircraft once lift wins.
+{
+  const sim = makeSim();
+  let airborne = false;
+  for (let i = 0; i < 30 * 60 && !airborne; i++) {
+    sim.step(["KeyW"]);
+    const s = sim.controller.getState();
+    if (s.phase === "air" && s.altitude > 3) airborne = true;
+    if (s.crashed) break;
+  }
+  const s = sim.controller.getState();
+  check(
+    "W-only hands-off takeoff",
+    airborne && !s.crashed,
+    `phase=${s.phase} alt=${s.altitude.toFixed(0)}m posZ=${s.posZ.toFixed(0)} crashed=${s.crashed}`,
+  );
+}
+
 
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -161,15 +182,15 @@ function headingStep(
   if (s.airspeed < cap - 3) powerOn = true;
   if (mode === "climb") powerOn = true;
   pilotLatch.set(sim, powerOn);
-  if (powerOn) keys.add("ShiftLeft");
+  if (powerOn) keys.add("KeyW");
   if (!s.grounded) {
     const err = wrapDeg(desiredHeadingDeg - s.headingDeg);
     if (err > hdgDeadband) keys.add("KeyD");
     else if (err < -hdgDeadband) keys.add("KeyA");
   }
   if (!s.grounded || s.airspeed > 27) {
-    if (s.verticalSpeed < targetVS - vsDeadband) keys.add("KeyS");
-    else if (s.verticalSpeed > targetVS + vsDeadband) keys.add("KeyW");
+    if (s.verticalSpeed < targetVS - vsDeadband) keys.add("ArrowUp");
+    else if (s.verticalSpeed > targetVS + vsDeadband) keys.add("ArrowDown");
   }
   sim.step([...keys]);
 }
@@ -363,8 +384,8 @@ function flyFinal(
     if (s.crashed) break;
     const keys: string[] = [];
     if (s.heightAboveGround > 8) {
-      if (s.verticalSpeed > -3.9) keys.push("KeyW");
-      else if (s.verticalSpeed < -4.5) keys.push("KeyS");
+      if (s.verticalSpeed > -3.9) keys.push("ArrowDown");
+      else if (s.verticalSpeed < -4.5) keys.push("ArrowUp");
     }
     sim.step(keys);
     t += DT;
@@ -394,7 +415,7 @@ function flyFinal(
   check("terrain impact crashes", s.crashed && s.phase === "crashed", `reason="${s.crashReason}"`);
   const px = s.posX;
   const pz = s.posZ;
-  sim.run(2, ["ShiftLeft", "KeyS"]); // controls must be dead
+  sim.run(2, ["KeyW", "ArrowUp"]); // controls must be dead
   const s2 = sim.controller.getState();
   check(
     "crashed aircraft is frozen",
