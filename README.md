@@ -36,6 +36,23 @@ thickens the fog. Headless: `test-headless/audio.test.ts` (level
 mappings, mute/volume behaviour against a fake AudioContext) and
 `worldbuild.ts` (weather presets apply their fog exactly).
 
+### Scenery fix (0.10.2)
+
+Jeet reported floating trees and asked for more hills. Root
+cause of the float: trees (and the physics ground sampler) used
+the ANALYTIC `heightAt`, but the rendered terrain is a faceted
+mesh whose surface differs from the analytic heightfield by up
+to ~2 m on slopes. Fix: `terrainMeshHeightAt` — bilinear
+interpolation of `heightAt` over the mesh's vertex grid — now
+grounds the trees AND the ground sampler; trees sit 0.5 m
+embedded, steep faces no longer get trees, and the mesh went
+from 150 to 200 subdivisions. Hills: stronger, closer rolling
+hills plus a broad swell and two backdrop peaks — with an
+approach/departure corridor along the ±Z centreline kept gentle
+so the landing path stays clear (the ground suite's full
+circuit caught a new bump doing exactly that before the
+corridor was added). Tree count up to ~850.
+
 ## Phase 9 — Missions
 
 A simple mission system layered on the existing simulation —
