@@ -21,8 +21,13 @@ The placeholder look is upgraded without touching the flight model:
   landing detection and reset all act on the same aircraft root as
   before, so they are unaffected.
 - **Trees:** still fully instanced (4 draw calls for ~650 trees),
-  now with two foliage tones and a second, smaller cone tier for a
-  two-tier pine silhouette.
+  now with two foliage tones and a second cone tier stepped wide
+  and high enough to read as a two-tier pine silhouette.
+- **Cockpit camera:** re-seats itself to the model's cabin when
+  the model loads (the fitted fuselage sits low, so the eye sits
+  just above its roof with the nose band in the lower frame); the
+  placeholder keeps its original cockpit preset if the model is
+  unavailable.
 - **Buildings:** terminal, office and tower shaft wear a window
   facade — a 512×256 texture drawn once on a canvas at build time
   (pale concrete, window grid, ground floor). Where no canvas
