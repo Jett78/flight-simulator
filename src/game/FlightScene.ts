@@ -187,7 +187,6 @@ export class FlightScene {
     // of guessing.
     if (new URLSearchParams(window.location.search).has("perf")) {
       this.perfInstrumentation = new SceneInstrumentation(this.scene);
-      this.perfInstrumentation.captureDrawCalls = true;
       this.perfInstrumentation.captureActiveMeshesEvaluationTime = true;
       const el = document.createElement("div");
       el.id = "perf-overlay";
