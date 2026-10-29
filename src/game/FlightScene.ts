@@ -13,9 +13,8 @@ import {
   type CheckpointMarkerHandle,
 } from "./checkpointMarkers";
 import {
-  createEnvironment,
+  applyWeatherToScene,
   loadWeatherPref,
-  type EnvironmentHandle,
   type WeatherId,
 } from "./environment";
 import type { CheckpointVisual } from "./missions";
@@ -130,7 +129,6 @@ export class FlightScene {
   private physicsAccumulator = 0;
   private checkpointMarkers: CheckpointMarkerHandle | null = null;
   private checkpointTime = 0;
-  private readonly environment: EnvironmentHandle;
   private disposed = false;
   private paused = false;
 
@@ -161,10 +159,9 @@ export class FlightScene {
     const shadowGenerator = this.createLights();
     this.aircraft = this.buildWorld(shadowGenerator);
 
-    // Phase 10: clouds/fog/weather (visual only — physics untouched),
-    // starting from the player's saved weather preference.
-    this.environment = createEnvironment(this.scene);
-    this.environment.setWeather(loadWeatherPref());
+    // Phase 10: weather (fog + sky, visual only — physics
+    // untouched), starting from the player's saved preference.
+    applyWeatherToScene(this.scene, loadWeatherPref());
 
     this.input = new InputManager();
     // Phase 7: the controller judges ground contact, touchdowns and
@@ -225,9 +222,6 @@ export class FlightScene {
     this.checkpointTime += frameDt;
     this.checkpointMarkers?.update(this.checkpointTime);
 
-    // Phase 10: cloud drift (environmental wind, visual only).
-    this.environment.update(frameDt);
-
     if (this.paused) {
       this.input.postUpdate();
       return;
@@ -281,9 +275,9 @@ export class FlightScene {
       visuals.length > 0 ? createCheckpointMarkers(this.scene, visuals) : null;
   }
 
-  /** Phase 10: apply a weather preset (fog, sky, clouds, drift). */
+  /** Phase 10: apply a weather preset (fog + sky, visual only). */
   setWeather(id: WeatherId): void {
-    this.environment.setWeather(id);
+    applyWeatherToScene(this.scene, id);
   }
 
   /** C: cycle Chase -> Chase far -> Cockpit -> Chase ... */
@@ -420,7 +414,6 @@ export class FlightScene {
     this.input.dispose();
     this.checkpointMarkers?.dispose();
     this.checkpointMarkers = null;
-    this.environment.dispose();
     this.engine.stopRenderLoop();
     this.scene.dispose();
     this.engine.dispose();

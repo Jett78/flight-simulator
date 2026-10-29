@@ -7,7 +7,7 @@ import { createAirport } from "../src/game/createAirport";
 import { createAirplane } from "../src/game/createAirplane";
 import { createCheckpointMarkers } from "../src/game/checkpointMarkers";
 import { MissionRun, checkpointVisuals } from "../src/game/missions";
-import { createEnvironment } from "../src/game/environment";
+import { applyWeatherToScene } from "../src/game/environment";
 
 try {
   const engine = new NullEngine();
@@ -26,24 +26,15 @@ try {
   console.log("checkpoints ok, marker meshes:", markers.meshCount, "scene meshes:", scene.meshes.length);
   markers.dispose();
   console.log("checkpoints disposed, scene meshes:", scene.meshes.length);
-  // Phase 10: environment — clouds + weather presets on the real scene
-  const env = createEnvironment(scene);
+  // Phase 10: weather presets apply their fog/sky to the real scene
+  // (the cloud layer was removed at Jeet's request — fog + sky only).
   for (const id of ["clear", "cloudy", "storm"] as const) {
-    const preset = env.setWeather(id);
-    const expectedVisible = Math.round(preset.cloudFraction * env.cloudCount);
+    const preset = applyWeatherToScene(scene, id);
     if (Math.abs(scene.fogDensity - preset.fogDensity) > 1e-9) {
       throw new Error(`weather ${id}: fog density not applied`);
     }
-    if (env.visibleCloudCount() !== expectedVisible) {
-      throw new Error(
-        `weather ${id}: ${env.visibleCloudCount()} clouds visible, expected ${expectedVisible}`,
-      );
-    }
-    console.log(`weather ${id} ok, clouds visible:`, env.visibleCloudCount());
+    console.log(`weather ${id} ok, fog density:`, scene.fogDensity);
   }
-  env.update(2.5); // drift step must not throw
-  env.dispose();
-  console.log("environment disposed, scene meshes:", scene.meshes.length);
   // Force geometry/material validation paths that run at first render
   new FreeCamera("test-camera", new Vector3(0, 4, 82), scene);
   scene.render();

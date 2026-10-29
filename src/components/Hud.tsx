@@ -657,8 +657,8 @@ export function Hud({
               </li>
               <li className="hud-help-tip">
                 Sound starts after your first click or keypress (browser
-                rule). The weather button changes sky, fog and clouds —
-                visual only, the flying does not change.
+                rule). The weather button changes sky and fog — visual
+                only, the flying does not change.
               </li>
             </ul>
           </aside>

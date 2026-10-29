@@ -17,26 +17,24 @@ the flight model, controls or missions.
   on the first click or keypress. **🔊 Sound / 🔇 Muted** toggle and
   a volume slider sit in the top-right actions; both persist in
   localStorage.
-- **Clouds & fog:** 36 billboard cloud planes share one
-  canvas-drawn texture and one material (no particles, no
-  post-processing, no new lights) and drift slowly across the
-  island. The scene's exponential fog is tuned per weather.
+- **Fog & sky:** the scene's exponential fog and sky colour are
+  tuned per weather. (A billboard cloud layer shipped in 0.10.0
+  and was removed in 0.10.1 at Jeet's request.)
 - **Weather button** (top right) cycles **☀ Clear → ☁ Cloudy →
-  ⛈ Storm**: cloud coverage 25% → 70% → 100%, thicker fog, greyer
-  sky and cloud tint, faster drift. The choice persists locally.
-- **Wind is environmental only** — it moves the clouds and
-  flavours the wind sound. It is deliberately NOT in the flight
-  model, so airspeed keeps its existing meaning and weather can
-  never change how the aircraft flies.
+  ⛈ Storm**: progressively thicker fog and a greyer sky. The
+  choice persists locally.
+- **Wind is environmental only** — it flavours the wind sound.
+  It is deliberately NOT in the flight model, so airspeed keeps
+  its existing meaning and weather can never change how the
+  aircraft flies.
 
 **Verify:** click anywhere once (audio unlocks — a quiet engine
 idle starts), hold Shift and the engine note rises with throttle;
 the 🔊 button mutes everything and the slider sets the level.
-Cycle the weather button: Storm visibly greys the sky, thickens
-the fog and fills it with clouds. Headless:
-`test-headless/audio.test.ts` (level mappings, mute/volume
-behaviour against a fake AudioContext) and `worldbuild.ts`
-(weather presets apply fog + cloud counts exactly).
+Cycle the weather button: Storm visibly greys the sky and
+thickens the fog. Headless: `test-headless/audio.test.ts` (level
+mappings, mute/volume behaviour against a fake AudioContext) and
+`worldbuild.ts` (weather presets apply their fog exactly).
 
 ## Phase 9 — Missions
 
