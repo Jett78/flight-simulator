@@ -998,3 +998,22 @@
     text-align: center;
   }
 }
+
+/* --- Phase 10 audio + weather controls --- */
+.hud-volume {
+  width: 64px;
+  accent-color: #ffd166;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.hud-volume:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (max-width: 680px) {
+  .hud-volume {
+    display: none;
+  }
+}

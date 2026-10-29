@@ -14,6 +14,19 @@ import {
   type MissionId,
   type MissionRecords,
 } from "../game/missions";
+import {
+  SoundEngine,
+  loadAudioPrefs,
+  saveAudioPrefs,
+  type AudioPrefs,
+} from "../game/audio";
+import {
+  WEATHER_ORDER,
+  WEATHER_PRESETS,
+  loadWeatherPref,
+  saveWeatherPref,
+  type WeatherId,
+} from "../game/environment";
 import "./Hud.css";
 
 /**
@@ -41,6 +54,8 @@ interface HudProps {
   onResetView: () => void;
   /** Phase 9: show/hide the 3D checkpoint rings. */
   setCheckpoints: (visuals: CheckpointVisual[]) => void;
+  /** Phase 10: apply a weather preset. */
+  setWeather: (id: WeatherId) => void;
 }
 
 interface RunSummary {
@@ -122,6 +137,7 @@ export function Hud({
   onResetAircraft,
   onResetView,
   setCheckpoints,
+  setWeather,
 }: HudProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -132,6 +148,59 @@ export function Hud({
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [records, setRecords] = useState<MissionRecords>(() => loadRecords());
   const [checkpointIndex, setCheckpointIndex] = useState(0);
+
+  // Phase 10 audio + weather UI state.
+  const [audioPrefs, setAudioPrefs] = useState<AudioPrefs>(() => loadAudioPrefs());
+  const [weatherId, setWeatherId] = useState<WeatherId>(() => loadWeatherPref());
+  const soundRef = useRef<SoundEngine | null>(null);
+  const getSound = () => {
+    if (!soundRef.current) {
+      soundRef.current = new SoundEngine(loadAudioPrefs());
+    }
+    return soundRef.current;
+  };
+
+  // Audio starts only after a real user gesture (autoplay policy):
+  // the first pointer/key press unlocks the context; unlock() is
+  // idempotent, so the listeners can stay for the session.
+  useEffect(() => {
+    const unlock = () => getSound().unlock();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  const toggleMute = () => {
+    const sound = getSound();
+    sound.unlock();
+    setAudioPrefs((p) => {
+      const next = { ...p, muted: !p.muted };
+      saveAudioPrefs(next);
+      sound.setMuted(next.muted);
+      return next;
+    });
+  };
+
+  const changeVolume = (value: number) => {
+    const sound = getSound();
+    setAudioPrefs((p) => {
+      const next = { ...p, volume: value };
+      saveAudioPrefs(next);
+      sound.setVolume(value);
+      return next;
+    });
+  };
+
+  const cycleWeather = () => {
+    const next =
+      WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherId) + 1) % WEATHER_ORDER.length];
+    setWeatherId(next);
+    saveWeatherPref(next);
+    setWeather(next);
+  };
   const runRef = useRef<MissionRun | null>(null);
   const pausedRef = useRef(paused);
   const setCheckpointsRef = useRef(setCheckpoints);
@@ -215,6 +284,7 @@ export function Hud({
     let handledRun: MissionRun | null = null;
     let toastUntil = 0;
     let toastVisible = false;
+    let lastTouchdownSeq = 0;
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -285,7 +355,10 @@ export function Hud({
       // phase, touchdown verdict and position each frame, written to
       // the DOM only when it actually changes.
       const now = performance.now();
-      if (prevGrounded && !s.grounded) liftoffAt = now;
+      if (prevGrounded && !s.grounded) {
+        liftoffAt = now;
+        soundRef.current?.takeoff();
+      }
       prevGrounded = s.grounded;
       let status = "";
       let tone = "info";
@@ -328,11 +401,22 @@ export function Hud({
       }
 
       // Phase 7: crash overlay (reason + reset action).
+      const crashEdge = s.crashed && !crashShown;
       if (crashEl.current && s.crashed !== crashShown) {
         crashShown = s.crashed;
         crashEl.current.style.display = s.crashed ? "flex" : "none";
         if (s.crashed && crashReasonEl.current) {
           crashReasonEl.current.textContent = s.crashReason;
+        }
+      }
+      if (crashEdge) soundRef.current?.crash();
+
+      // Phase 10: continuous engine/wind levels + touchdown thump.
+      soundRef.current?.update(s, !pausedRef.current);
+      if (s.touchdown && s.touchdown.sequence !== lastTouchdownSeq) {
+        lastTouchdownSeq = s.touchdown.sequence;
+        if (s.touchdown.quality === "smooth" || s.touchdown.quality === "hard") {
+          soundRef.current?.touchdown(s.touchdown.quality);
         }
       }
 
@@ -366,6 +450,7 @@ export function Hud({
           checkpointToastEl.current.style.opacity = "1";
           toastVisible = true;
           toastUntil = now + 2800;
+          soundRef.current?.checkpoint();
         }
         if (toastVisible && now > toastUntil && checkpointToastEl.current) {
           checkpointToastEl.current.style.opacity = "0";
@@ -413,6 +498,7 @@ export function Hud({
           handledRun = run;
           if (run.status === "complete") {
             setRecords((r) => recordCompletion(r, run.id, run.score));
+            soundRef.current?.missionComplete();
           }
           setRunSummary({
             id: run.id,
@@ -442,7 +528,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 9 · MISSIONS</div>
+        <div className="hud-badge">PHASE 10 · SOUND & WEATHER</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -480,6 +566,33 @@ export function Hud({
           >
             🏁 Missions
           </button>
+          <button
+            type="button"
+            className="hud-btn"
+            title="Weather (visual only — flight physics unchanged)"
+            onClick={cycleWeather}
+          >
+            {WEATHER_PRESETS[weatherId].icon} {WEATHER_PRESETS[weatherId].name}
+          </button>
+          <button
+            type="button"
+            className="hud-btn"
+            title={audioPrefs.muted ? "Unmute sound" : "Mute sound"}
+            onClick={toggleMute}
+          >
+            {audioPrefs.muted ? "🔇 Muted" : "🔊 Sound"}
+          </button>
+          <input
+            type="range"
+            className="hud-volume"
+            min={0}
+            max={100}
+            value={Math.round(audioPrefs.volume * 100)}
+            disabled={audioPrefs.muted}
+            aria-label="Volume"
+            title="Volume"
+            onChange={(e) => changeVolume(Number(e.target.value) / 100)}
+          />
         </div>
         {menuOpen && (
           <aside className="hud-panel hud-missions" aria-label="Mission selection">
@@ -541,6 +654,11 @@ export function Hud({
               <li className="hud-help-tip">
                 Checkpoint Flight: follow the gold beacon and route line —
                 the arrow, map and “Turn / Climb” cues point at the next ring.
+              </li>
+              <li className="hud-help-tip">
+                Sound starts after your first click or keypress (browser
+                rule). The weather button changes sky, fog and clouds —
+                visual only, the flying does not change.
               </li>
             </ul>
           </aside>

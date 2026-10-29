@@ -2,7 +2,43 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 9 — Missions (current)
+## Phase 10 — Sound & weather (current)
+
+Lightweight audio and atmosphere, layered on without touching
+the flight model, controls or missions.
+
+- **Procedural sound** (`src/game/audio.ts`, Web Audio — no audio
+  files, no paid APIs): engine hum that follows throttle and
+  airspeed, wind rush that builds with speed while airborne, a
+  liftoff whoosh, touchdown thumps (a hard landing sounds lower
+  and louder), a crash burst, a checkpoint blip and a
+  mission-complete arpeggio.
+- **Autoplay rules respected:** the audio context is created only
+  on the first click or keypress. **🔊 Sound / 🔇 Muted** toggle and
+  a volume slider sit in the top-right actions; both persist in
+  localStorage.
+- **Clouds & fog:** 36 billboard cloud planes share one
+  canvas-drawn texture and one material (no particles, no
+  post-processing, no new lights) and drift slowly across the
+  island. The scene's exponential fog is tuned per weather.
+- **Weather button** (top right) cycles **☀ Clear → ☁ Cloudy →
+  ⛈ Storm**: cloud coverage 25% → 70% → 100%, thicker fog, greyer
+  sky and cloud tint, faster drift. The choice persists locally.
+- **Wind is environmental only** — it moves the clouds and
+  flavours the wind sound. It is deliberately NOT in the flight
+  model, so airspeed keeps its existing meaning and weather can
+  never change how the aircraft flies.
+
+**Verify:** click anywhere once (audio unlocks — a quiet engine
+idle starts), hold Shift and the engine note rises with throttle;
+the 🔊 button mutes everything and the slider sets the level.
+Cycle the weather button: Storm visibly greys the sky, thickens
+the fog and fills it with clouds. Headless:
+`test-headless/audio.test.ts` (level mappings, mute/volume
+behaviour against a fake AudioContext) and `worldbuild.ts`
+(weather presets apply fog + cloud counts exactly).
+
+## Phase 9 — Missions
 
 A simple mission system layered on the existing simulation —
 physics, controls, HUD and the Phase 7 landing detection are
