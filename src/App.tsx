@@ -34,7 +34,7 @@ export default function App() {
       <SceneCanvas onReady={handleReady} />
 
       <header className="hud hud-top-left">
-        <div className="hud-badge">PHASE 4 · FLIGHT PHYSICS</div>
+        <div className="hud-badge">PHASE 5 · ISLAND ENVIRONMENT</div>
         <h1>Flight Simulator</h1>
         <p>Babylon.js · React · TypeScript · Vite</p>
       </header>

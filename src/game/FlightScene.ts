@@ -10,6 +10,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { AircraftController, type FlightState } from "./AircraftController";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
+import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
 
 /**
@@ -117,8 +118,11 @@ export class FlightScene {
     // Clean sky
     this.scene.clearColor = new Color4(0.47, 0.71, 0.96, 1);
     this.scene.fogMode = Scene.FOGMODE_EXP2;
-    this.scene.fogDensity = 0.0009;
-    this.scene.fogColor = new Color3(0.62, 0.78, 0.95);
+    // Phase 5: island scale (~2.8 km across) needs much thinner fog
+    // than the Phase 1 airfield-only scene — this keeps the far
+    // mountains hazed but visible from cruise altitude.
+    this.scene.fogDensity = 0.00036;
+    this.scene.fogColor = new Color3(0.66, 0.8, 0.94);
 
     const shadowGenerator = this.createLights();
     this.aircraft = this.buildWorld(shadowGenerator);
@@ -139,7 +143,7 @@ export class FlightScene {
 
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
     this.camera.minZ = 0.1;
-    this.camera.maxZ = 1200;
+    this.camera.maxZ = 5200; // island + sky dome (radius 4200) in view
     this.camera.fov = 0.82;
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
 
@@ -280,6 +284,9 @@ export class FlightScene {
   }
 
   private buildWorld(shadows: ShadowGenerator): TransformNode {
+    // Island first: its terrain is flat y=0 across the airport pad,
+    // so the airport meshes sit on it exactly as on the old ground.
+    createIsland(this.scene);
     const airport = createAirport(this.scene);
     for (const mesh of airport.shadowCasters) shadows.addShadowCaster(mesh);
 

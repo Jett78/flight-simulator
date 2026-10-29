@@ -2,7 +2,45 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 4 — Semi-realistic flight physics (current)
+## Phase 5 — Island environment (current)
+
+A procedural island replaces the flat Phase 1 ground (`src/game/createIsland.ts`).
+One analytic height function drives the terrain mesh, its vertex
+colours and all object placement, so everything sits on the ground by
+construction:
+
+- **Terrain** — a single static heightfield (150×150 subdivisions,
+  ~45k triangles): perfectly flat pad under the existing airport
+  (runway/start/physics untouched), rolling hills growing with
+  distance, five mountains (105–165 m) placed away from the departure
+  corridor, and a coastline at ~1,080 m radius falling to a seabed.
+- **Vertex-colour styling** — sand beaches at sea level, grass,
+  forest green, rock on steep faces and high ground, snow caps above
+  ~132 m.
+- **Ocean** — a single large plane at −1.8 m with a sun specular.
+- **Sky** — a gradient dome (pale horizon to deep blue zenith),
+  thinner distance fog retuned for the 2.8 km island scale.
+- **Vegetation & landmarks** — ~650 instanced trees (2 draw calls),
+  a 6-house village on a flattened shore pad (SE), and a lighthouse
+  on the east headland. Airport buildings/runway are the Phase 1 set,
+  unchanged.
+
+Physics note: the flight model's ground level is still the runway
+datum (Phase 4) — terrain collision is not part of this phase, so
+treat the hills as scenery you fly *over*; departure toward −Z is
+kept clear by design.
+
+### Verify Phase 5 in the browser
+
+On load you should see the runway ahead, green hills and blue ocean
+around the airfield, and mountains in the distance. Take off (Shift,
+then S at ~110 km/h), climb and turn: beaches ring the island, the
+village sits on the south-east shore, the lighthouse stands on the
+east coast, and snow-capped peaks ring the island. Fly a full circuit
+— the island is ~2.2 km across, so you stay "in the world" the whole
+time.
+
+## Phase 4 — Semi-realistic flight physics
 
 The Phase 3 "fly where the nose points" model is replaced by a
 force-based simulation in `src/game/AircraftController.ts`, stepped at a
@@ -199,5 +237,6 @@ npm run lint    # oxlint
 - Phase 1: 3D foundation
 - Phase 2: detailed airplane + chase camera
 - Phase 3: keyboard input + basic movement
-- Phase 4: semi-realistic flight physics ← you are here
+- Phase 4: semi-realistic flight physics
+- Phase 5: procedural island environment ← you are here
 - Later phases (not started): flight physics, keyboard controls, and more — added one phase at a time.

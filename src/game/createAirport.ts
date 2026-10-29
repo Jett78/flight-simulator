@@ -20,7 +20,6 @@ export function createAirport(scene: Scene): AirportResult {
   const casters: Mesh[] = [];
   const receivers: Mesh[] = [];
 
-  const grass = createMaterial(scene, "grass", 0.32, 0.56, 0.28);
   const asphalt = createMaterial(scene, "asphalt", 0.13, 0.13, 0.15);
   const concrete = createMaterial(scene, "concrete", 0.62, 0.63, 0.65);
   const markingWhite = createMaterial(scene, "marking-white", 0.95, 0.95, 0.95, {
@@ -55,14 +54,10 @@ export function createAirport(scene: Scene): AirportResult {
   };
 
   // ---------- Ground ----------
-  const ground = MeshBuilder.CreateGround(
-    "ground",
-    { width: 900, height: 900, subdivisions: 1 },
-    scene,
-  );
-  ground.material = grass;
-  ground.receiveShadows = true;
-  receivers.push(ground);
+  // Phase 5: the island terrain (createIsland) provides the ground —
+  // it is flattened to y=0 across the whole airport pad, so every
+  // mesh here sits exactly as before. The old 900x900 grass plane
+  // that used to live here is gone.
 
   // Slightly lighter mowed strip around the runway for definition
   box(
