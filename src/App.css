@@ -108,6 +108,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+.controls-tip {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.hud-stall {
+  color: #d21f1f;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .hud-reset {
   pointer-events: auto;
   font: inherit;

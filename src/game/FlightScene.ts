@@ -7,7 +7,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
-import { AircraftController } from "./AircraftController";
+import { AircraftController, type FlightState } from "./AircraftController";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { InputManager } from "./InputManager";
@@ -20,6 +20,17 @@ import { InputManager } from "./InputManager";
 /** Runway centreline, near the southern threshold, nose pointing down -Z
  *  so ~178m of runway lies ahead. y = runway top (0.16) + gear depth (2.25). */
 const AIRCRAFT_START = new Vector3(0, 2.41, 68);
+
+/**
+ * Physics runs at a fixed 120 Hz timestep through an accumulator, so
+ * the simulation is identical at 30, 60 or 144 fps. Frame time is
+ * clamped to 100 ms: after a tab switch or long pause the game slows
+ * briefly instead of exploding, and leftover time is dropped rather
+ * than spiralling (max ~16 steps per frame).
+ */
+const FIXED_DT = 1 / 120;
+const MAX_FRAME_DT = 0.1;
+const MAX_PHYSICS_STEPS = 16;
 
 interface CameraMode {
   name: string;
@@ -64,15 +75,16 @@ const CAMERA_MODES: CameraMode[] = [
 /**
  * Owns the Babylon.js Engine + Scene.
  *
- * Phase 3 wiring: InputManager (keyboard) -> AircraftController
- * (movement) -> chase camera, updated once per frame in that order
- * with a single clamped delta-time. Rendering stays separate from
- * movement: the controller never touches the camera or the scene.
+ * Phase 4 wiring: InputManager (keyboard) -> AircraftController
+ * (force-based flight model, stepped at a fixed 120 Hz through an
+ * accumulator) -> chase camera at render rate. Rendering stays
+ * separate from simulation: the controller never touches the camera
+ * or the scene.
  */
 export class FlightScene {
   /** Optional UI callbacks, assigned by the React host. */
   onCameraModeChange?: (modeName: string) => void;
-  onTelemetry?: (speedKmh: number, throttlePercent: number) => void;
+  onTelemetry?: (state: FlightState) => void;
 
   private readonly engine: Engine;
   private readonly scene: Scene;
@@ -84,6 +96,7 @@ export class FlightScene {
   private readonly onResize = () => this.engine.resize();
   private cameraModeIndex = 0;
   private telemetryTimer = 0;
+  private physicsAccumulator = 0;
   private disposed = false;
 
   // Scratch objects reused every frame (no per-frame allocation)
@@ -113,6 +126,17 @@ export class FlightScene {
     this.input = new InputManager();
     this.controller = new AircraftController(this.aircraft, AIRCRAFT_START);
 
+    // Development-only debug handle (Phase 4 §6): in `npm run dev`,
+    // open the console and use __flightSim.state() / __flightSim.reset()
+    if (import.meta.env.DEV) {
+      const debugWindow = window as unknown as { __flightSim?: unknown };
+      debugWindow.__flightSim = {
+        state: () => this.controller.getState(),
+        reset: () => this.resetAircraft(),
+        controller: this.controller,
+      };
+    }
+
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
     this.camera.minZ = 0.1;
     this.camera.maxZ = 1200;
@@ -131,32 +155,44 @@ export class FlightScene {
     return CAMERA_MODES[this.cameraModeIndex];
   }
 
-  /** One frame: input actions -> aircraft movement -> camera -> HUD. */
+  /** One frame: input actions -> fixed-step physics -> camera -> HUD. */
   private update(): void {
-    // Clamp dt so a background tab / hitch can't make anything jump
-    const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+    // Clamp frame time so pauses/tab switches can't destabilise physics
+    const frameDt = Math.min(this.engine.getDeltaTime() / 1000, MAX_FRAME_DT);
 
     if (this.input.wasJustPressed("KeyR")) this.resetAircraft();
     if (this.input.wasJustPressed("KeyC")) this.cycleCameraMode();
 
-    this.controller.update(dt, this.input);
-    this.updateChaseCamera(dt);
+    // Fixed-timestep physics, independent of the render frame rate
+    this.physicsAccumulator += frameDt;
+    let steps = 0;
+    while (this.physicsAccumulator >= FIXED_DT && steps < MAX_PHYSICS_STEPS) {
+      this.controller.step(FIXED_DT, this.input);
+      this.physicsAccumulator -= FIXED_DT;
+      steps++;
+    }
+    if (steps === MAX_PHYSICS_STEPS) this.physicsAccumulator = 0;
 
-    this.telemetryTimer += dt;
+    this.updateChaseCamera(frameDt);
+
+    this.telemetryTimer += frameDt;
     if (this.telemetryTimer >= 0.15) {
       this.telemetryTimer = 0;
-      this.onTelemetry?.(
-        Math.round(this.controller.speed * 3.6),
-        Math.round(this.controller.throttle * 100),
-      );
+      this.onTelemetry?.(this.controller.getState());
     }
 
     this.input.postUpdate();
   }
 
+  /** Clean programmatic access to the simulation state (HUD/debugging). */
+  getFlightState(): FlightState {
+    return this.controller.getState();
+  }
+
   /** R: restore the aircraft to its start state and re-frame it. */
   resetAircraft(): void {
     this.controller.reset();
+    this.physicsAccumulator = 0;
     this.resetCamera();
   }
 

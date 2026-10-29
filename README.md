@@ -2,7 +2,73 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 3 — Keyboard input & basic movement (current)
+## Phase 4 — Semi-realistic flight physics (current)
+
+The Phase 3 "fly where the nose points" model is replaced by a
+force-based simulation in `src/game/AircraftController.ts`, stepped at a
+**fixed 120 Hz timestep** through an accumulator in `FlightScene`
+(frame time clamped to 100 ms), so physics is identical at any frame
+rate.
+
+**Model** (game-oriented, physically meaningful):
+
+- **Thrust** along the nose from throttle, fading with airspeed.
+- **Lift** = ½·ρ·v²·S·CL — depends on airspeed *and* angle of attack
+  (CL is linear in AoA). Lift acts perpendicular to the airflow, so
+  banking tilts the lift vector and *that* is what turns the aircraft
+  (plus a coordinated-turn rate Ω = g·tan(bank)/v applied to the nose).
+- **Drag** = ½·ρ·v²·S·CD with parasite + induced (CL²) + stall +
+  high-speed-rise terms.
+- **Gravity**, ground roll with rolling friction, nose-wheel steering
+  and a rotation-speed pitch guard.
+- **Stall**: beyond +15° / −12° AoA the lift coefficient falls off,
+  drag jumps, control power and stability fade, and the nose drops.
+- **Gentle stability assistance**: nose eases toward the flight path,
+  wings auto-level hands-off, sideslip is damped.
+
+Key numbers: mass 4,600 kg, wing 65 m², max thrust 22 kN. Rotation at
+~34 m/s (~125 km/h), stall at ~28 m/s, hands-off climb ≈ 5–8 m/s at
+full throttle, level top speed ≈ 73 m/s.
+
+**State interface (for later HUD work):** `AircraftController.getState()`
+returns a `FlightState` — airspeed, altitude, heading, vertical speed,
+throttle, angle of attack, pitch, roll, grounded, stall factor, and the
+lift/drag/thrust forces. `FlightScene.getFlightState()` and the HUD
+telemetry callback use the same object. The bottom bar already shows
+speed / altitude / V/S / heading / throttle / AoA plus a STALL warning;
+the full HUD comes in a later phase.
+
+**Debugging (development only):** run `npm run dev`, open the browser
+console and use `__flightSim.state()` (full FlightState),
+`__flightSim.reset()`, `__flightSim.controller`. A headless physics
+self-test (Babylon NullEngine, no GPU) lives in `test-headless/`:
+`npx tsx test-headless/physics.test.ts` — it verifies parked idle,
+ground acceleration, takeoff, climb, a banked turn, stall + recovery,
+idle-throttle descent, reset, and frame-rate independence.
+
+### Verify Phase 4 in the browser
+
+1. **Accelerate** — hold **Shift**: throttle % rises, speed builds
+   down the runway.
+2. **Take off** — at ~125 km/h hold **S**: the nose rises and the
+   aircraft lifts off (below that speed, S does almost nothing — no
+   airflow, no control power, no lift).
+3. **Climb/descend** — keep full throttle and a gentle nose-up attitude
+   to climb; cut throttle with **Ctrl** and it settles into a descent.
+4. **Turn** — tap **A** or **D** to bank ~25°, release, and watch the
+   heading change on the HUD as the tilted lift curves the flight path;
+   **Q/E** adds yaw.
+5. **Stall** — climb high first (100 m+), cut the throttle and hold
+   **S**: speed bleeds, AoA passes 15°, the STALL warning shows, lift
+   fades and the aircraft sinks with mushy controls. Recover like a
+   real pilot: throttle up, **W** just until the warning clears, then
+   a brief **S** pull-out. (Holding W for many seconds dives into the
+   ground — that is correct behaviour, not a bug.)
+6. **Stability** — the same takeoff flown at a stuttering frame rate
+   (or after switching tabs) behaves the same; physics is fixed-step.
+7. **Reset** — press **R** any time: back to the runway, stopped.
+
+## Phase 3 — Keyboard input & basic movement
 
 Simple, predictable, frame-rate-independent movement — not an aerodynamic
 model. The aircraft moves forward along its nose direction at a speed set
@@ -128,5 +194,6 @@ npm run lint    # oxlint
 
 - Phase 1: 3D foundation
 - Phase 2: detailed airplane + chase camera
-- Phase 3: keyboard input + basic movement ← you are here
+- Phase 3: keyboard input + basic movement
+- Phase 4: semi-realistic flight physics ← you are here
 - Later phases (not started): flight physics, keyboard controls, and more — added one phase at a time.

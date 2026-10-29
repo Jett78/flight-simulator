@@ -1,0 +1,214 @@
+/**
+ * Headless physics self-test for the Phase 4 flight model.
+ * Runs the REAL AircraftController on Babylon's NullEngine (no GPU).
+ * Run with: npx tsx test-headless/physics.test.ts
+ */
+import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Scene } from "@babylonjs/core/scene";
+import { AircraftController } from "../src/game/AircraftController";
+import type { InputManager } from "../src/game/InputManager";
+
+const DT = 1 / 120;
+const START = new Vector3(0, 2.41, 68);
+
+class FakeInput {
+  keys = new Set<string>();
+  isDown(...codes: string[]): boolean {
+    return codes.some((c) => this.keys.has(c));
+  }
+  wasJustPressed(): boolean {
+    return false;
+  }
+  postUpdate(): void {}
+}
+
+let failures = 0;
+function check(name: string, ok: boolean, detail: string) {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name} — ${detail}`);
+  if (!ok) failures++;
+}
+
+function makeSim() {
+  const engine = new NullEngine();
+  const scene = new Scene(engine);
+  const node = new TransformNode("airplane", scene);
+  node.position.copyFrom(START);
+  const input = new FakeInput();
+  const controller = new AircraftController(node, START);
+  const run = (seconds: number, keys: string[] = []) => {
+    input.keys = new Set(keys);
+    const steps = Math.round(seconds / DT);
+    for (let i = 0; i < steps; i++) controller.step(DT, input as unknown as InputManager);
+  };
+  /** Hold keys until predicate or timeout; returns elapsed seconds. */
+  const runUntil = (keys: string[], pred: () => boolean, timeout: number) => {
+    input.keys = new Set(keys);
+    let t = 0;
+    while (!pred() && t < timeout) {
+      controller.step(DT, input as unknown as InputManager);
+      t += DT;
+    }
+    return t;
+  };
+  return { controller, node, run, runUntil, input };
+}
+
+// ---------- 1. Idle: nothing moves without throttle ----------
+{
+  const { controller, run } = makeSim();
+  run(3);
+  const s = controller.getState();
+  check("idle stays parked", s.airspeed < 0.01 && s.altitude === 0, `v=${s.airspeed.toFixed(2)} alt=${s.altitude}`);
+}
+
+// ---------- 2. Takeoff + climb ----------
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]); // throttle to ~100%
+  const tRoll = runUntil([], () => controller.getState().airspeed >= 38, 30);
+  const sRoll = controller.getState();
+  check(
+    "accelerates on ground roll",
+    sRoll.airspeed >= 38 && sRoll.grounded,
+    `reached 38 m/s in ${tRoll.toFixed(1)}s, grounded=${sRoll.grounded}`,
+  );
+  // Rotate: hold S (nose up) and keep full throttle (throttle stays 1 without keys)
+  runUntil(["KeyS"], () => controller.getState().altitude > 3, 12);
+  const sAir = controller.getState();
+  check("takes off after rotation", !sAir.grounded && sAir.altitude > 3, `alt=${sAir.altitude.toFixed(1)}m v=${sAir.airspeed.toFixed(1)}`);
+  run(4, []); // hands off, should keep climbing or hold under stability
+  const sClimb = controller.getState();
+  check("climbs / sustains flight", sClimb.altitude > 8, `alt=${sClimb.altitude.toFixed(1)}m VS=${sClimb.verticalSpeed.toFixed(1)}`);
+  (globalThis as { __sim2?: unknown }).__sim2 = { controller, run, runUntil };
+}
+
+// ---------- 3. Banked turn (continues sim 2's aircraft) ----------
+{
+  const { controller, run, runUntil } = (globalThis as { __sim2: ReturnType<typeof makeSim> }).__sim2;
+  runUntil(["KeyS"], () => controller.getState().altitude > 45, 20); // climb to safe altitude first
+  run(1, []);
+  const h0 = controller.getState().headingDeg;
+  run(0.45, ["KeyD"]); // bank right (~25-30 degrees)
+  const banked = controller.getState();
+  run(6, []); // let the turn develop under lift + stability
+  const h1 = controller.getState().headingDeg;
+  let dh = h1 - h0;
+  if (dh < -180) dh += 360;
+  if (dh > 180) dh -= 360;
+  check(
+    "bank produces a turn",
+    Math.abs(banked.rollDeg) > 12 && dh > 10,
+    `roll during bank=${banked.rollDeg.toFixed(0)}°, heading change=${dh.toFixed(0)}°`,
+  );
+}
+
+// ---------- 4. Stall + recovery ----------
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]);
+  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil(["KeyS"], () => controller.getState().altitude > 80, 30);
+  run(1.5, []); // settle in climb attitude hands-off (stall entry needs altitude in hand)
+  // Kill the throttle and hold the nose up hard -> stall
+  run(2.5, ["ControlLeft"]); // throttle -> 0
+  let maxStall = 0;
+  let minVS = 0;
+  const input = { keys: new Set(["KeyS"]) };
+  void input;
+  const t0 = 14;
+  for (let t = 0; t < t0; t += DT) {
+    // hold S the whole time
+    run(DT, ["KeyS"]);
+    const s = controller.getState();
+    maxStall = Math.max(maxStall, s.stallFactor);
+    if (s.stallFactor > 0.3) minVS = Math.min(minVS, s.verticalSpeed);
+    if (maxStall > 0.5 && s.verticalSpeed < -3) break;
+  }
+  const sStall = controller.getState();
+  check(
+    "stalls when slow + nose high",
+    maxStall > 0.4,
+    `max stallFactor=${maxStall.toFixed(2)} AoA=${sStall.angleOfAttackDeg.toFixed(0)}° v=${sStall.airspeed.toFixed(1)} VS=${sStall.verticalSpeed.toFixed(1)}`,
+  );
+  check("loses lift / descends in stall", minVS < -2 || sStall.verticalSpeed < -2, `VS in stall=${Math.min(minVS, sStall.verticalSpeed).toFixed(1)} m/s`);
+  // Recover with real technique (holding full nose-down for 8s dives
+  // into the ground in any flight model — verified during tuning):
+  // throttle up, W only until the stall breaks, brief S pull-out,
+  // then hands off and let stability settle it.
+  runUntil(["ShiftLeft", "KeyW"], () => controller.getState().stallFactor < 0.05, 3);
+  run(1.2, ["KeyS"]);
+  run(5, []);
+  const sRec = controller.getState();
+  check(
+    "recovers from stall",
+    sRec.stallFactor < 0.2 && sRec.airspeed > 32 && sRec.altitude > 2,
+    `stall=${sRec.stallFactor.toFixed(2)} v=${sRec.airspeed.toFixed(1)} alt=${sRec.altitude.toFixed(0)}`,
+  );
+  // Reset
+  controller.reset();
+  const sReset = controller.getState();
+  check(
+    "reset restores start state",
+    sReset.airspeed === 0 && sReset.throttle === 0 && sReset.altitude === 0 && sReset.grounded,
+    `v=${sReset.airspeed} thr=${sReset.throttle} alt=${sReset.altitude}`,
+  );
+}
+
+// ---------- 5. Descent on throttle cut (no stall) ----------
+{
+  const { controller, run, runUntil } = makeSim();
+  run(2.5, ["ShiftLeft"]);
+  runUntil([], () => controller.getState().airspeed >= 38, 30);
+  runUntil(["KeyS"], () => controller.getState().altitude > 30, 15);
+  run(1, []);
+  const altBefore = controller.getState().altitude;
+  run(3, ["ControlLeft"]); // throttle to ~0 (2.2s to drain)
+  // Idle from a climb attitude first trades speed for height (zoom),
+  // then settles into a descent as lift fades — watch long enough.
+  run(11, []);
+  const s = controller.getState();
+  check(
+    "descends when lift is insufficient (idle throttle)",
+    s.altitude < altBefore - 5 && s.verticalSpeed <= 0.5,
+    `alt ${altBefore.toFixed(0)}m -> ${s.altitude.toFixed(0)}m, VS=${s.verticalSpeed.toFixed(1)}`,
+  );
+}
+
+// ---------- 6. Frame-rate independence (accumulator equivalence) ----------
+{
+  // Same input timeline stepped two ways: pure 120Hz steps vs an
+  // accumulator fed with 1/30s render frames. Step sequences are
+  // identical by construction, so end states must match closely.
+  const a = makeSim();
+  const b = makeSim();
+  const timeline = (t: number): string[] => {
+    if (t < 2.5) return ["ShiftLeft"];
+    if (t < 9) return [];
+    if (t < 12) return ["KeyS"];
+    return [];
+  };
+  const total = 16;
+  for (let t = 0; t < total; t += DT) a.run(DT, timeline(t));
+  let acc = 0;
+  const frame = 1 / 30;
+  for (let t = 0; t < total; t += frame) {
+    acc += frame;
+    b.input.keys = new Set(timeline(t));
+    while (acc >= DT) {
+      b.controller.step(DT, b.input as unknown as InputManager);
+      acc -= DT;
+    }
+  }
+  const pa = a.node.position;
+  const pb = b.node.position;
+  const dist = Vector3.Distance(pa, pb);
+  // Tolerance covers input sampling at frame edges (30 Hz sampling of
+  // the same timeline), not physics divergence — the point is the two
+  // runs fly the same trajectory instead of one blowing up.
+  check("physics independent of frame rate", dist < 6, `end-position delta=${dist.toFixed(2)}m after 16s`);
+}
+
+console.log(failures === 0 ? "\nALL PHYSICS TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
+process.exit(failures === 0 ? 0 : 1);
