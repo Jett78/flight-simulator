@@ -185,7 +185,15 @@ export function createIsland(scene: Scene): IslandResult {
     }
     const skyMat = new StandardMaterial("sky-material", scene);
     skyMat.diffuseColor = new Color3(1, 1, 1);
-    skyMat.disableLighting = true;
+    // NOTE: do NOT set disableLighting here. In Babylon.js that flag
+    // means "receives no light at all" — a StandardMaterial then
+    // renders BLACK (its albedo, vertex colours included, is
+    // multiplied by zero light), which is exactly the solid-black
+    // sky two live browser checks reported in Phase 5/6. The dome
+    // stays lit by the scene's hemisphere + sun lights, which tint
+    // the vertex-colour gradient naturally. The small emissive lift
+    // keeps the faces turned away from the sun from going too dark.
+    skyMat.emissiveColor = new Color3(0.1, 0.13, 0.18);
     skyMat.fogEnabled = false;
     skyMat.backFaceCulling = false; // we view the dome from inside
     sky.material = skyMat;
