@@ -8,6 +8,7 @@ import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 import { AircraftController, type FlightState } from "./AircraftController";
+import { loadAircraftModel } from "./aircraftModel";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
@@ -316,6 +317,10 @@ export class FlightScene {
     const airplane = createAirplane(this.scene);
     airplane.position.copyFrom(AIRCRAFT_START);
     airplane.getChildMeshes().forEach((mesh) => shadows.addShadowCaster(mesh));
+    // Phase 8: swap the placeholder for the GLB model when it loads.
+    // Async and fully optional — on any failure the placeholder
+    // stays and the simulation is unaffected.
+    void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh));
     return airplane;
   }
 

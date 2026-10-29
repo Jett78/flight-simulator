@@ -245,7 +245,14 @@ export function createIsland(scene: Scene): IslandResult {
     for (let i = 0; i < positions.length; i += 3) {
       const h = positions[i + 1];
       const slope = 1 - normals[i + 1]; // 0 = flat, grows with steepness
-      terrainColor(h, slope, 0.94 + rng() * 0.12, c);
+      // Spatially coherent tint patches (Phase 8): smooth low-
+      // frequency variation reads as meadow/forest patchiness from
+      // the air, where per-vertex random tint just looked like grain.
+      const tint =
+        0.96 +
+        0.045 * Math.sin(positions[i] * 0.021 + positions[i + 2] * 0.013) +
+        0.035 * Math.sin(positions[i] * 0.113 - positions[i + 2] * 0.071);
+      terrainColor(h, slope, tint, c);
       colors.push(c[0], c[1], c[2], 1);
     }
     terrain.setVerticesData(VertexBuffer.ColorKind, colors);
@@ -272,6 +279,21 @@ export function createIsland(scene: Scene): IslandResult {
     scene,
   );
   canopyBase.material = createMaterial(scene, "island-foliage", 0.15, 0.4, 0.17);
+  // Phase 8: a lighter second foliage tone (trees pick one at
+  // random) and a smaller upper cone tier for a two-tier pine
+  // silhouette. Still fully instanced: 4 draw calls for all trees.
+  const canopyBaseB = MeshBuilder.CreateCylinder(
+    "tree-canopy-base-b",
+    { diameterTop: 0.25, diameterBottom: 3.9, height: 6.2, tessellation: 8 },
+    scene,
+  );
+  canopyBaseB.material = createMaterial(scene, "island-foliage-b", 0.24, 0.48, 0.2);
+  const canopyTopBase = MeshBuilder.CreateCylinder(
+    "tree-canopy-top-base",
+    { diameterTop: 0.1, diameterBottom: 2.1, height: 3.6, tessellation: 8 },
+    scene,
+  );
+  canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.19, 0.44, 0.18);
 
   const TREE_ATTEMPTS = 1600;
   let placed = 0;
@@ -292,14 +314,21 @@ export function createIsland(scene: Scene): IslandResult {
     trunk.position.set(x, h - sink + (2.4 * sy) / 2, z);
     trunk.rotation.y = yaw;
     trunk.scaling.set(s, sy, s);
-    const canopy = canopyBase.createInstance(`tree-canopy-${placed}`);
+    const canopySrc = rng() < 0.5 ? canopyBase : canopyBaseB;
+    const canopy = canopySrc.createInstance(`tree-canopy-${placed}`);
     canopy.position.set(x, h - sink + 2.4 * sy + (6.2 * sy) / 2 - 1.1 * sy, z);
     canopy.rotation.y = yaw;
     canopy.scaling.set(s, sy, s);
+    const top = canopyTopBase.createInstance(`tree-canopy-top-${placed}`);
+    top.position.set(x, h - sink + 6.1 * sy, z);
+    top.rotation.y = yaw;
+    top.scaling.set(s, sy, s);
     placed++;
   }
   trunkBase.isVisible = false;
   canopyBase.isVisible = false;
+  canopyBaseB.isVisible = false;
+  canopyTopBase.isVisible = false;
 
   // ---------- Village (on the flattened pad) ----------
   const wallMats = [

@@ -2,7 +2,38 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 7 — Runway interaction, landing & crashes (current)
+## Phase 8 — Models & materials (current)
+
+The placeholder look is upgraded without touching the flight model:
+
+- **Aircraft model:** a real glTF model — *Cesium Air*, a low-poly
+  twin-prop (CC BY 4.0, © Cesium; full credit in `ASSETS.md`) —
+  stored locally in `public/models/` (no CDN, no paid service).
+  `src/game/aircraftModel.ts` loads it asynchronously and swaps it
+  in for the primitive placeholder; **if the load fails for any
+  reason, the placeholder simply stays** — the sim never depends on
+  the asset. Fitting is measured at load: the nose direction is
+  derived from the propeller positions, and a model-root transform
+  yaws it to the sim's −Z forward, scales it to ~11 m, and sets its
+  underside exactly on the physics gear contact (−2.25 m). Physics
+  and collision dimensions are unchanged and never read the model.
+  The file's propeller animations play. Controls, chase camera,
+  landing detection and reset all act on the same aircraft root as
+  before, so they are unaffected.
+- **Trees:** still fully instanced (4 draw calls for ~650 trees),
+  now with two foliage tones and a second, smaller cone tier for a
+  two-tier pine silhouette.
+- **Buildings:** terminal, office and tower shaft wear a window
+  facade — a 512×256 texture drawn once on a canvas at build time
+  (pale concrete, window grid, ground floor). Where no canvas
+  exists (headless tests), a plain material is used instead.
+- **Terrain:** vertex-colour tint is now smooth low-frequency
+  patchiness instead of per-vertex grain — reads as meadow/forest
+  variation from altitude.
+- Lighting and the single shadow-casting sun are unchanged, so
+  performance characteristics are the same as Phase 7.
+
+## Phase 7 — Runway interaction, landing & crashes
 
 The world is now solid, and arrivals are judged:
 
@@ -304,5 +335,6 @@ npm run lint    # oxlint
 - Phase 4: semi-realistic flight physics
 - Phase 5: procedural island environment
 - Phase 6: flight HUD
-- Phase 7: runway interaction, landing & crash detection ← you are here
+- Phase 7: runway interaction, landing & crash detection
+- Phase 8: glTF aircraft model + material upgrades ← you are here
 - Later phases (not started): added one phase at a time, on request.
