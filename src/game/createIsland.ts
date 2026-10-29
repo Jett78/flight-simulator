@@ -42,7 +42,7 @@ import { createMaterial } from "./materials";
 export const SEA_LEVEL = -1.8;
 
 const TERRAIN_SIZE = 2800;
-const TERRAIN_SUBDIVISIONS = 150;
+const TERRAIN_SUBDIVISIONS = 200;
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const smoothstep = (x: number) => {
@@ -73,6 +73,11 @@ const PEAKS: Peak[] = [
   { x: -430, z: 570, h: 120, r: 280 },
   { x: 540, z: 640, h: 105, r: 260 },
   { x: -360, z: -900, h: 150, r: 340 },
+  // Scenery pass (0.10.2): two more backdrop peaks near the island
+  // rim — far west and far north — kept well clear of the airport,
+  // the departure corridor and the checkpoint route.
+  { x: -980, z: -40, h: 88, r: 300 },
+  { x: 180, z: -1080, h: 92, r: 300 },
 ];
 
 /** Village pad centre (south-east shore) and its flattened height. */
@@ -92,13 +97,17 @@ export function heightAt(x: number, z: number): number {
   const coastR = 1080 + 60 * Math.sin(angle * 3 + 1.3) + 30 * Math.sin(angle * 7 - 0.5);
   const coastT = clamp01((coastR - r) / 220); // 1 inland -> 0 offshore
 
-  // Rolling hills, growing with distance from the airport pad
+  // Rolling hills, growing with distance from the airport pad.
+  // 0.10.2 scenery pass: stronger, closer hills (they used to start
+  // ~520 m out and top out around ±28 m, so the island read flat) —
+  // now they begin ~430 m out with a broad swell underneath.
   const dAirport = airportBoxDistance(x, z);
-  const hillGrow = smoothstep(dAirport / 520);
+  const hillGrow = smoothstep(dAirport / 430);
   const hills =
-    (14 * Math.sin(x * 0.011 + 1.7) * Math.cos(z * 0.009 - 0.6) +
-      9 * Math.sin(x * 0.023 - 0.4) * Math.sin(z * 0.019 + 1.2) +
-      5 * Math.sin(x * 0.047) * Math.cos(z * 0.041)) *
+    (19 * Math.sin(x * 0.011 + 1.7) * Math.cos(z * 0.009 - 0.6) +
+      12 * Math.sin(x * 0.023 - 0.4) * Math.sin(z * 0.019 + 1.2) +
+      6.5 * Math.sin(x * 0.047) * Math.cos(z * 0.041) +
+      10 * Math.sin(x * 0.004 + 0.7) * Math.cos(z * 0.0035 - 1.1)) *
     hillGrow;
 
   let mountains = 0;
@@ -107,7 +116,16 @@ export function heightAt(x: number, z: number): number {
     mountains += p.h * Math.exp(-d2 / (p.r * p.r));
   }
 
-  let landH = Math.max(0.5, 1.7 + hills + mountains);
+  // Approach/departure corridor: keep the ±Z centreline (|x| < ~120,
+  // ramping to full relief by |x| = 260) gentle, so the stronger
+  // 0.10.2 hills never rise into the takeoff or landing path. The
+  // ground suite's full circuit caught exactly that: a banked final
+  // met a new bump south of the field and wing-struck.
+  const corridor = smoothstep((Math.abs(x) - 120) / 140);
+  const shaped = (hills + mountains) * corridor;
+  const hillsShaped = shaped; // combined relief, corridor-shaped
+
+  let landH = Math.max(0.5, 1.7 + hillsShaped);
   // Village pad: flatten to a constant height near the shore
   const dVillage = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
   const villageWeight = 1 - smoothstep((dVillage - VILLAGE.r) / 55);
@@ -120,6 +138,42 @@ export function heightAt(x: number, z: number): number {
   const flatWeight = 1 - smoothstep(dAirport / 170);
   h *= 1 - flatWeight;
   return h;
+}
+
+/**
+ * Height of the RENDERED terrain surface at (x, z): bilinear
+ * interpolation of `heightAt` over the terrain mesh's vertex grid.
+ *
+ * The mesh only has vertices every TERRAIN_SIZE/SUBDIVISIONS metres,
+ * so its surface is a faceted approximation of the analytic
+ * heightfield — on hill slopes the two can differ by a metre or
+ * more. Anything that must SIT on the visible ground (trees, the
+ * physics ground sampler) has to use this function, not `heightAt`,
+ * or it floats above / sinks into the mesh. (The floating trees
+ * Jeet reported in 0.10.2 were placed with the analytic height.)
+ */
+export function terrainMeshHeightAt(x: number, z: number): number {
+  const step = TERRAIN_SIZE / TERRAIN_SUBDIVISIONS;
+  const half = TERRAIN_SIZE / 2;
+  if (x < -half || x > half || z < -half || z > half) return heightAt(x, z);
+  const gx = (x + half) / step;
+  const gz = (z + half) / step;
+  const i = Math.min(Math.floor(gx), TERRAIN_SUBDIVISIONS - 1);
+  const j = Math.min(Math.floor(gz), TERRAIN_SUBDIVISIONS - 1);
+  const fx = gx - i;
+  const fz = gz - j;
+  const x0 = -half + i * step;
+  const z0 = -half + j * step;
+  const h00 = heightAt(x0, z0);
+  const h10 = heightAt(x0 + step, z0);
+  const h01 = heightAt(x0, z0 + step);
+  const h11 = heightAt(x0 + step, z0 + step);
+  return (
+    h00 * (1 - fx) * (1 - fz) +
+    h10 * fx * (1 - fz) +
+    h01 * (1 - fx) * fz +
+    h11 * fx * fz
+  );
 }
 
 /** Terrain colour for a height/slope — stylised low-poly palette. */
@@ -295,21 +349,25 @@ export function createIsland(scene: Scene): IslandResult {
   );
   canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.2, 0.45, 0.19);
 
-  const TREE_ATTEMPTS = 1600;
+  const TREE_ATTEMPTS = 2100;
   let placed = 0;
-  for (let i = 0; i < TREE_ATTEMPTS && placed < 700; i++) {
+  for (let i = 0; i < TREE_ATTEMPTS && placed < 850; i++) {
     const x = (rng() * 2 - 1) * 1030;
     const z = (rng() * 2 - 1) * 1030;
-    const h = heightAt(x, z);
+    // Sit trees on the RENDERED surface (see terrainMeshHeightAt) —
+    // the analytic height left them floating on slopes.
+    const h = terrainMeshHeightAt(x, z);
     if (h < 2.4 || h > 58) continue; // beaches / high rock stay bare
     if (airportBoxDistance(x, z) < 46) continue; // keep the airfield clear
     if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 12) continue;
-    const slope = Math.abs(heightAt(x + 3, z) - h) + Math.abs(heightAt(x, z + 3) - h);
-    if (slope > 2.6) continue;
+    const slope =
+      Math.abs(terrainMeshHeightAt(x + 3, z) - h) +
+      Math.abs(terrainMeshHeightAt(x, z + 3) - h);
+    if (slope > 1.7) continue; // a vertical trunk can't hug steep faces
     const s = 0.85 + rng() * 0.9;
     const sy = s * (0.9 + rng() * 0.35);
     const yaw = rng() * Math.PI * 2;
-    const sink = 0.25;
+    const sink = 0.5;
     const trunk = trunkBase.createInstance(`tree-trunk-${placed}`);
     trunk.position.set(x, h - sink + (2.4 * sy) / 2, z);
     trunk.rotation.y = yaw;

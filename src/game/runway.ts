@@ -1,5 +1,5 @@
 import type { GroundInfo, GroundSampler } from "./AircraftController";
-import { heightAt, SEA_LEVEL } from "./createIsland";
+import { SEA_LEVEL, terrainMeshHeightAt } from "./createIsland";
 
 /**
  * Runway geometry — the single source of truth (Phase 7).
@@ -31,7 +31,7 @@ export function isOverRunway(x: number, z: number, margin = 0): boolean {
 
 /**
  * The real ground sampler for the island world: runway rectangle
- * first, then the island's analytic terrain height, with the sea
+ * first, then the island's rendered terrain height, with the sea
  * surface wherever the terrain drops below sea level. Slope is a
  * finite difference of the terrain height (the runway is flat).
  *
@@ -43,13 +43,16 @@ export function createGroundSampler(): GroundSampler {
     if (isOverRunway(x, z)) {
       return { height: RUNWAY.surfaceY, surface: "runway", slopeDeg: 0, gradeX: 0, gradeZ: 0, onRunway: true };
     }
-    const h = heightAt(x, z);
+    // The RENDERED mesh surface, not the analytic heightfield —
+    // otherwise the aircraft floats/sinks against the visible
+    // ground on slopes, exactly like the trees did.
+    const h = terrainMeshHeightAt(x, z);
     if (h <= SEA_LEVEL) {
       return { height: SEA_LEVEL, surface: "water", slopeDeg: 0, gradeX: 0, gradeZ: 0, onRunway: false };
     }
     const d = 3;
-    const gradeX = (heightAt(x + d, z) - heightAt(x - d, z)) / (2 * d);
-    const gradeZ = (heightAt(x, z + d) - heightAt(x, z - d)) / (2 * d);
+    const gradeX = (terrainMeshHeightAt(x + d, z) - terrainMeshHeightAt(x - d, z)) / (2 * d);
+    const gradeZ = (terrainMeshHeightAt(x, z + d) - terrainMeshHeightAt(x, z - d)) / (2 * d);
     const slopeDeg = (Math.atan(Math.hypot(gradeX, gradeZ)) * 180) / Math.PI;
     return { height: h, surface: "terrain", slopeDeg, gradeX, gradeZ, onRunway: false };
   };
