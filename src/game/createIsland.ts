@@ -278,7 +278,7 @@ export function createIsland(scene: Scene): IslandResult {
     { diameterTop: 0.25, diameterBottom: 3.9, height: 6.2, tessellation: 8 },
     scene,
   );
-  canopyBase.material = createMaterial(scene, "island-foliage", 0.15, 0.4, 0.17);
+  canopyBase.material = createMaterial(scene, "island-foliage", 0.13, 0.38, 0.16);
   // Phase 8: a lighter second foliage tone (trees pick one at
   // random) and a smaller upper cone tier for a two-tier pine
   // silhouette. Still fully instanced: 4 draw calls for all trees.
@@ -287,13 +287,13 @@ export function createIsland(scene: Scene): IslandResult {
     { diameterTop: 0.25, diameterBottom: 3.9, height: 6.2, tessellation: 8 },
     scene,
   );
-  canopyBaseB.material = createMaterial(scene, "island-foliage-b", 0.24, 0.48, 0.2);
+  canopyBaseB.material = createMaterial(scene, "island-foliage-b", 0.31, 0.51, 0.21);
   const canopyTopBase = MeshBuilder.CreateCylinder(
     "tree-canopy-top-base",
-    { diameterTop: 0.1, diameterBottom: 2.1, height: 3.6, tessellation: 8 },
+    { diameterTop: 0.1, diameterBottom: 2.7, height: 4.4, tessellation: 8 },
     scene,
   );
-  canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.19, 0.44, 0.18);
+  canopyTopBase.material = createMaterial(scene, "island-foliage-top", 0.2, 0.45, 0.19);
 
   const TREE_ATTEMPTS = 1600;
   let placed = 0;
@@ -320,7 +320,7 @@ export function createIsland(scene: Scene): IslandResult {
     canopy.rotation.y = yaw;
     canopy.scaling.set(s, sy, s);
     const top = canopyTopBase.createInstance(`tree-canopy-top-${placed}`);
-    top.position.set(x, h - sink + 6.1 * sy, z);
+    top.position.set(x, h - sink + 7.4 * sy, z);
     top.rotation.y = yaw;
     top.scaling.set(s, sy, s);
     placed++;
