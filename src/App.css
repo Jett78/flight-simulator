@@ -89,9 +89,35 @@
   padding-left: 18px;
 }
 
+.hud-note-left {
+  opacity: 0.85;
+  font-weight: 600;
+}
+
+.hud-reset {
+  pointer-events: auto;
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: #0b5ed7;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.hud-reset:hover {
+  background: #0a53be;
+}
+
+.hud-reset:active {
+  transform: translateY(1px);
+}
+
 @media (max-width: 720px) {
   .hud-top-right,
-  .hud-note {
+  .hud-note,
+  .hud-note-left {
     display: none;
   }
   .hud-bottom {
