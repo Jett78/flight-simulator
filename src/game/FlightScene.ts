@@ -6,6 +6,7 @@ import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator"
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { Scene } from "@babylonjs/core/scene";
 import { AircraftController, type FlightState } from "./AircraftController";
 import {
@@ -126,6 +127,9 @@ export class FlightScene {
   private checkpointTime = 0;
   private disposed = false;
   private paused = false;
+  // Phase 11 diagnostics: only created when the URL has ?perf=1.
+  private perfInstrumentation: SceneInstrumentation | null = null;
+  private perfOverlay: HTMLDivElement | null = null;
 
   // Scratch objects reused every frame (no per-frame allocation)
   private readonly _quat = new Quaternion();
@@ -175,6 +179,26 @@ export class FlightScene {
     this.camera.maxZ = 5200; // island + sky dome (radius 4200) in view
     this.camera.fov = 0.82;
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
+
+    // Phase 11: opt-in performance overlay (?perf=1) — FPS, draw
+    // calls, active meshes/triangles. Zero cost when absent: the
+    // instrumentation is only created on request. Used to measure
+    // before/after optimization numbers on the live build instead
+    // of guessing.
+    if (new URLSearchParams(window.location.search).has("perf")) {
+      this.perfInstrumentation = new SceneInstrumentation(this.scene);
+      this.perfInstrumentation.captureDrawCalls = true;
+      this.perfInstrumentation.captureActiveMeshesEvaluationTime = true;
+      const el = document.createElement("div");
+      el.id = "perf-overlay";
+      el.style.cssText =
+        "position:fixed;left:10px;bottom:10px;z-index:60;background:rgba(6,16,28,.82);" +
+        "color:#cfe8ff;font:12px/1.5 ui-monospace,Menlo,monospace;padding:8px 10px;" +
+        "border:1px solid rgba(140,190,255,.4);border-radius:8px;pointer-events:none;white-space:pre;";
+      el.textContent = "perf: warming up…";
+      document.body.appendChild(el);
+      this.perfOverlay = el;
+    }
 
     this.scene.onBeforeRenderObservable.add(() => this.update());
 
@@ -237,6 +261,15 @@ export class FlightScene {
     if (this.telemetryTimer >= 0.15) {
       this.telemetryTimer = 0;
       this.onTelemetry?.(this.controller.getState());
+      if (this.perfOverlay && this.perfInstrumentation) {
+        const engine = this.engine;
+        this.perfOverlay.textContent =
+          `fps ${engine.getFps().toFixed(0)} · draws ${this.perfInstrumentation.drawCallsCounter.current}` +
+          `\nmeshes ${this.scene.getActiveMeshes().length}/${this.scene.meshes.length}` +
+          ` · tris ${(this.scene.getActiveIndices() / 3000).toFixed(0)}k` +
+          `\nscale ${engine.getHardwareScalingLevel().toFixed(2)} · dpr ${window.devicePixelRatio}` +
+          ` · ${engine.getRenderWidth()}×${engine.getRenderHeight()}`;
+      }
     }
 
     this.input.postUpdate();
@@ -397,6 +430,10 @@ export class FlightScene {
     if (this.disposed) return;
     this.disposed = true;
     window.removeEventListener("resize", this.onResize);
+    this.perfInstrumentation?.dispose();
+    this.perfInstrumentation = null;
+    this.perfOverlay?.remove();
+    this.perfOverlay = null;
     this.input.dispose();
     this.checkpointMarkers?.dispose();
     this.checkpointMarkers = null;
