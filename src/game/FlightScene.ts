@@ -68,17 +68,29 @@ const CAMERA_MODES: CameraMode[] = [
   },
   {
     name: "Cockpit",
-    // Phase 8: the eye point moves to the model's cabin (the old
-    // offset sat at the placeholder's long nose, which left the
-    // real model's nose out of frame). From here the cowl and nose
-    // fill the lower frame; with the placeholder fallback the same
-    // spot sits just above its fuselage, so both read correctly.
-    offset: new Vector3(0, 1.55, -1.4),
-    lookOffset: new Vector3(0, 1.0, -30),
+    // Placeholder eye point (just above its fuselage). When the
+    // GLB model loads, buildWorld re-seats this preset to the
+    // model's cabin — see COCKPIT_MODEL below.
+    offset: new Vector3(0, 1.7, -4.8),
+    lookOffset: new Vector3(0, 1.15, -30),
     posDamp: 40,
     targetDamp: 40,
   },
 ];
+
+/**
+ * Cockpit preset for the GLB model (Phase 8): the model's fuselage
+ * sits low (centreline top ≈ −0.4 in root space, nose tip −1.41),
+ * so the eye goes just above the cabin roof at z −1.0 and the view
+ * tilts down enough to put the nose band (z −3.5…−5.5) in the
+ * lower quarter of the frame — measured from the fitted model's
+ * actual cross-section, after two level-eye attempts left the nose
+ * below the frame entirely.
+ */
+const COCKPIT_MODEL = {
+  offset: new Vector3(0, 0.55, -1.0),
+  lookOffset: new Vector3(0, -3.5, -30),
+};
 
 /**
  * Owns the Babylon.js Engine + Scene.
@@ -324,8 +336,18 @@ export class FlightScene {
     airplane.getChildMeshes().forEach((mesh) => shadows.addShadowCaster(mesh));
     // Phase 8: swap the placeholder for the GLB model when it loads.
     // Async and fully optional — on any failure the placeholder
-    // stays and the simulation is unaffected.
-    void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh));
+    // stays and the simulation is unaffected. On success, re-seat
+    // the cockpit camera to the model's cabin.
+    void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh)).then(
+      (loaded) => {
+        if (!loaded) return;
+        const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
+        if (cockpit) {
+          cockpit.offset.copyFrom(COCKPIT_MODEL.offset);
+          cockpit.lookOffset.copyFrom(COCKPIT_MODEL.lookOffset);
+        }
+      },
+    );
     return airplane;
   }
 
