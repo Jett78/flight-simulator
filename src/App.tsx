@@ -4,7 +4,6 @@ import { SceneCanvas } from "./components/SceneCanvas";
 import type { FlightState } from "./game/AircraftController";
 import type { FlightScene } from "./game/FlightScene";
 import type { CheckpointVisual } from "./game/missions";
-import type { WeatherId } from "./game/environment";
 import "./App.css";
 
 /**
@@ -50,10 +49,6 @@ export default function App() {
     sceneRef.current?.setCheckpoints(visuals);
   }, []);
 
-  const handleSetWeather = useCallback((id: WeatherId) => {
-    sceneRef.current?.setWeather(id);
-  }, []);
-
   // P pauses/resumes from anywhere (the game InputManager leaves
   // KeyP to the UI layer).
   useEffect(() => {
@@ -77,7 +72,6 @@ export default function App() {
         onResetAircraft={handleResetAircraft}
         onResetView={handleResetView}
         setCheckpoints={handleSetCheckpoints}
-        setWeather={handleSetWeather}
       />
     </main>
   );

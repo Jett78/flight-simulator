@@ -2,7 +2,7 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 10 — Sound & weather (current)
+## Phase 10 — Sound (current)
 
 Lightweight audio and atmosphere, layered on without touching
 the flight model, controls or missions.
@@ -17,11 +17,8 @@ the flight model, controls or missions.
   on the first click or keypress. **🔊 Sound / 🔇 Muted** toggle and
   a volume slider sit in the top-right actions; both persist in
   localStorage.
-- **Fog & sky:** the scene's exponential fog and sky colour are
   tuned per weather. (A billboard cloud layer shipped in 0.10.0
   and was removed in 0.10.1 at Jeet's request.)
-- **Weather button** (top right) cycles **☀ Clear → ☁ Cloudy →
-  ⛈ Storm**: progressively thicker fog and a greyer sky. The
   choice persists locally.
 - **Wind is environmental only** — it flavours the wind sound.
   It is deliberately NOT in the flight model, so airspeed keeps
@@ -31,10 +28,8 @@ the flight model, controls or missions.
 **Verify:** click anywhere once (audio unlocks — a quiet engine
 idle starts), hold Shift and the engine note rises with throttle;
 the 🔊 button mutes everything and the slider sets the level.
-Cycle the weather button: Storm visibly greys the sky and
 thickens the fog. Headless: `test-headless/audio.test.ts` (level
-mappings, mute/volume behaviour against a fake AudioContext) and
-`worldbuild.ts` (weather presets apply their fog exactly).
+mappings, mute/volume behaviour against a fake AudioContext).
 
 ### Scenery fix (0.10.2)
 
@@ -53,6 +48,10 @@ so the landing path stays clear (the ground suite's full
 circuit caught a new bump doing exactly that before the
 corridor was added). Tree count up to ~850.
 
+
+> **Removed at Jeet's request:** the Phase 10 cloud layer
+> (0.10.1) and the weather system (0.10.3) — the sky is back to
+> one fixed clear day. The sound system stays.
 ## Phase 9 — Missions
 
 A simple mission system layered on the existing simulation —

@@ -12,11 +12,6 @@ import {
   createCheckpointMarkers,
   type CheckpointMarkerHandle,
 } from "./checkpointMarkers";
-import {
-  applyWeatherToScene,
-  loadWeatherPref,
-  type WeatherId,
-} from "./environment";
 import type { CheckpointVisual } from "./missions";
 import { loadAircraftModel } from "./aircraftModel";
 import { createAirport } from "./createAirport";
@@ -159,10 +154,6 @@ export class FlightScene {
     const shadowGenerator = this.createLights();
     this.aircraft = this.buildWorld(shadowGenerator);
 
-    // Phase 10: weather (fog + sky, visual only — physics
-    // untouched), starting from the player's saved preference.
-    applyWeatherToScene(this.scene, loadWeatherPref());
-
     this.input = new InputManager();
     // Phase 7: the controller judges ground contact, touchdowns and
     // crashes against the real island/runway ground sampler.
@@ -273,11 +264,6 @@ export class FlightScene {
     this.checkpointMarkers?.dispose();
     this.checkpointMarkers =
       visuals.length > 0 ? createCheckpointMarkers(this.scene, visuals) : null;
-  }
-
-  /** Phase 10: apply a weather preset (fog + sky, visual only). */
-  setWeather(id: WeatherId): void {
-    applyWeatherToScene(this.scene, id);
   }
 
   /** C: cycle Chase -> Chase far -> Cockpit -> Chase ... */

@@ -20,13 +20,6 @@ import {
   saveAudioPrefs,
   type AudioPrefs,
 } from "../game/audio";
-import {
-  WEATHER_ORDER,
-  WEATHER_PRESETS,
-  loadWeatherPref,
-  saveWeatherPref,
-  type WeatherId,
-} from "../game/environment";
 import "./Hud.css";
 
 /**
@@ -54,8 +47,6 @@ interface HudProps {
   onResetView: () => void;
   /** Phase 9: show/hide the 3D checkpoint rings. */
   setCheckpoints: (visuals: CheckpointVisual[]) => void;
-  /** Phase 10: apply a weather preset. */
-  setWeather: (id: WeatherId) => void;
 }
 
 interface RunSummary {
@@ -137,7 +128,6 @@ export function Hud({
   onResetAircraft,
   onResetView,
   setCheckpoints,
-  setWeather,
 }: HudProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -149,9 +139,8 @@ export function Hud({
   const [records, setRecords] = useState<MissionRecords>(() => loadRecords());
   const [checkpointIndex, setCheckpointIndex] = useState(0);
 
-  // Phase 10 audio + weather UI state.
+  // Phase 10 audio UI state.
   const [audioPrefs, setAudioPrefs] = useState<AudioPrefs>(() => loadAudioPrefs());
-  const [weatherId, setWeatherId] = useState<WeatherId>(() => loadWeatherPref());
   const soundRef = useRef<SoundEngine | null>(null);
   const getSound = () => {
     if (!soundRef.current) {
@@ -194,13 +183,6 @@ export function Hud({
     });
   };
 
-  const cycleWeather = () => {
-    const next =
-      WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherId) + 1) % WEATHER_ORDER.length];
-    setWeatherId(next);
-    saveWeatherPref(next);
-    setWeather(next);
-  };
   const runRef = useRef<MissionRun | null>(null);
   const pausedRef = useRef(paused);
   const setCheckpointsRef = useRef(setCheckpoints);
@@ -528,7 +510,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 10 · SOUND & WEATHER</div>
+        <div className="hud-badge">PHASE 10 · SOUND</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -565,14 +547,6 @@ export function Hud({
             onClick={() => setMenuOpen((open) => !open)}
           >
             🏁 Missions
-          </button>
-          <button
-            type="button"
-            className="hud-btn"
-            title="Weather (visual only — flight physics unchanged)"
-            onClick={cycleWeather}
-          >
-            {WEATHER_PRESETS[weatherId].icon} {WEATHER_PRESETS[weatherId].name}
           </button>
           <button
             type="button"
@@ -657,8 +631,7 @@ export function Hud({
               </li>
               <li className="hud-help-tip">
                 Sound starts after your first click or keypress (browser
-                rule). The weather button changes sky and fog — visual
-                only, the flying does not change.
+                rule).
               </li>
             </ul>
           </aside>
