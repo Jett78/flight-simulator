@@ -2,7 +2,48 @@
 
 Browser-based 3D flight simulator built incrementally with **React + Vite + TypeScript + Babylon.js**.
 
-## Phase 6 — Flight HUD (current)
+## Phase 7 — Runway interaction, landing & crashes (current)
+
+The world is now solid, and arrivals are judged:
+
+- **One source of truth for the runway** (`src/game/runway.ts`):
+  18 m × 220 m, top at y = 0.16, long axis on Z — matching the
+  visual mesh. A ground sampler built on it (plus the island's
+  analytic `heightAt` and sea level) is injected into the flight
+  controller: every step the aircraft knows the surface under it —
+  runway, terrain, or water — its height, and its slope.
+- **Ground interaction:** the wheels rest on the real surface
+  anywhere (runway 2.41 m root height, grass 2.25 m, hillsides at
+  terrain height + gear). Rolling friction is surface-dependent
+  (asphalt 0.35, rough ground 0.85, stronger when braking at idle),
+  and slope resistance bleeds speed on uphill ground rolls. The
+  ground still cannot be rotated through, and nothing pins the
+  aircraft down — liftoff happens the moment lift wins.
+- **Touchdown evaluation** at the moment of contact (after a real
+  airborne period, not ground-roll bumps): sink rate, bank, pitch,
+  surface and slope decide the verdict — **smooth** (≤ 2.5 m/s on
+  the runway), **hard** (up to 5.5 m/s), **off-runway** (gentle, on
+  terrain), or a **crash**: sink beyond 5.5 m/s, bank beyond 28°,
+  nose-first below −12°, a hillside steeper than 15°, rough ground
+  faster than 45 m/s, or any contact with the sea (ditched).
+- **Crash state:** motion stops, controls go dead, and the HUD
+  shows a crash overlay with the reason and a reset action
+  (button or **R**), restoring the exact start state.
+- **HUD feedback:** a status line shows *Ready for takeoff*,
+  *Takeoff roll*, *Airborne*, *Approaching runway*, and the
+  touchdown verdict with its sink rate — quiet the rest of the time.
+- **Also in this release** (Jeet's live fixes): the throttle is
+  spring-loaded — hold **Shift** for power, release and it falls
+  back to zero, **Ctrl** is a fast cut; and the takeoff is brisker
+  (21 kN thrust, 92 m² wing) — liftoff after ~116 m of the 178 m
+  available, at ~101 km/h.
+- Verified headlessly (`test-headless/ground.test.ts`, 13 checks):
+  spawn state, takeoff, a stabilized runway landing, a full
+  circuit, an off-runway grass landing, a hard landing, hillside
+  and sea crashes, crash freeze, and reset. The Phase 4 physics
+  suite still passes in full.
+
+## Phase 6 — Flight HUD
 
 A React HUD (kept fully separate from the Babylon layer) driven by
 the live simulation state:
@@ -150,8 +191,8 @@ rendering and UI.
 | **W / S** | Pitch — **W nose down, S nose up** (yoke style: push = descend, pull = climb) |
 | **A / D** | Roll — bank left / bank right |
 | **Q / E** | Yaw — nose left / nose right |
-| **Shift** | Increase throttle (hold) |
-| **Ctrl** | Decrease throttle (hold) |
+| **Shift** | Throttle up (hold — release and power falls back to zero) |
+| **Ctrl** | Fast throttle cut (hold) |
 | **C** | Cycle camera: Chase → Chase far → Cockpit |
 | **R** | Reset aircraft to the runway start (position, level, 0 speed/throttle) |
 
@@ -261,5 +302,7 @@ npm run lint    # oxlint
 - Phase 2: detailed airplane + chase camera
 - Phase 3: keyboard input + basic movement
 - Phase 4: semi-realistic flight physics
-- Phase 5: procedural island environment ← you are here
-- Later phases (not started): flight physics, keyboard controls, and more — added one phase at a time.
+- Phase 5: procedural island environment
+- Phase 6: flight HUD
+- Phase 7: runway interaction, landing & crash detection ← you are here
+- Later phases (not started): added one phase at a time, on request.

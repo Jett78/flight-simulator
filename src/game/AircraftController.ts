@@ -36,7 +36,8 @@ import type { InputManager } from "./InputManager";
  *   W = nose down,  S = nose up        (yoke/stick style)
  *   A = bank left,  D = bank right
  *   Q = yaw left,   E = yaw right
- *   Shift = throttle up, Ctrl = throttle down
+ *   Shift = throttle up (hold), Ctrl = fast throttle cut,
+ *   release both = power decays to zero (spring-loaded throttle)
  *
  * The controller owns position/velocity/orientation state only; it
  * never touches the camera, the scene, or rendering.
@@ -48,10 +49,10 @@ import type { InputManager } from "./InputManager";
 // near 1.0 (first tuning pass) made the aircraft climb almost
 // vertically hands-off — physically consistent, wrong game feel.
 const MASS = 4600; // kg
-const MAX_THRUST = 17500; // N at 100% throttle, static (sea level, v=0)
+const MAX_THRUST = 21000; // N at 100% throttle, static (sea level, v=0)
 const THRUST_LAPSE_SPEED = 170; // thrust fades linearly with speed...
 const THRUST_LAPSE_FLOOR = 0.3; // ...down to this fraction at high speed
-const WING_AREA = 80; // m^2 (big wing: rotation ~30 m/s, gentle climb ~7 m/s)
+const WING_AREA = 92; // m^2 (big wing: rotation ~28 m/s, liftoff roll ~100 m)
 const AIR_DENSITY = 1.225; // kg/m^3, sea level
 const GRAVITY = 9.81; // m/s^2
 const CL_ALPHA = 5.7; // lift coefficient per radian of AoA
@@ -65,7 +66,13 @@ const CD_STALL = 0.3;
 const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch trim below
 
 // --- Control constants ---
-const THROTTLE_RATE = 0.45; // per second while Shift/Ctrl held
+// Throttle is spring-loaded (Jeet's call, 2026-10-29): hold Shift and
+// power rises; release every throttle key and power falls back toward
+// zero on its own; Ctrl is a fast cut. There is no "set and forget"
+// lever position — the HUD throttle bar shows the live value.
+const THROTTLE_UP_RATE = 0.6; // per second while Shift held
+const THROTTLE_DOWN_RATE = 1.2; // per second while Ctrl held (fast cut)
+const THROTTLE_DECAY_RATE = 0.5; // per second when no throttle key held
 const PITCH_RATE = 0.8; // rad/s at full deflection & full effectiveness
 const ROLL_RATE = 1.6; // rad/s
 const YAW_RATE = 0.5; // rad/s
@@ -73,6 +80,20 @@ const INPUT_RESPONSE = 7; // 1/s — smoothing of control deflections
 
 // --- World limits ---
 const GROUND_Y = 2.41; // root height with wheels on the runway
+// Phase 7: the gear depth (root-to-wheel distance) is what turns a
+// surface height into a root height anywhere in the world:
+// contact root Y = surface height + GEAR_DEPTH (2.41 on the runway:
+// 0.16 asphalt top + 2.25 gear).
+const GEAR_DEPTH = 2.25;
+// Touchdown verdict thresholds (Phase 7). Sink rates a trained pilot
+// would call firm-but-fine, the hard band, and the crash line.
+const SINK_SMOOTH = 2.5; // m/s — at or below: smooth touchdown
+const SINK_CRASH = 5.5; // m/s — beyond: structural impact, crash
+const ROLL_CRASH_DEG = 28; // bank at contact beyond this = wing strike
+const PITCH_CRASH_DEG = -12; // nose-down at contact beyond this = nose slam
+const TERRAIN_SLOPE_CRASH_DEG = 15; // hillside steeper than this = impact
+const TERRAIN_SPEED_CRASH = 45; // m/s — too fast to roll out on rough ground
+const BUMP_MAX_AIR_TIME = 0.4; // s — shorter airborne gaps are ground roll, not landings
 const CEILING_Y = 500;
 const MAX_SPEED = 140; // m/s absolute cap (numeric safety net)
 
@@ -95,6 +116,39 @@ function damp(current: number, target: number, rate: number, dt: number): number
 }
 
 /** Clean snapshot of the simulation for HUD / debugging (Phase 4 §5). */
+/** What the aircraft is resting on / flying over (Phase 7). */
+export type SurfaceKind = "runway" | "terrain" | "water";
+
+/** One ground sample at a world position. */
+export interface GroundInfo {
+  /** World Y of the surface itself (runway top, terrain, sea). */
+  height: number;
+  surface: SurfaceKind;
+  /** Terrain steepness in degrees (0 on the runway and the sea). */
+  slopeDeg: number;
+  /** Terrain gradient (dh/dx, dh/dz) — drives slope resistance on ground rolls. */
+  gradeX: number;
+  gradeZ: number;
+  onRunway: boolean;
+}
+
+/**
+ * Injected ground query — the controller never hard-codes the world.
+ * FlightScene supplies the island+runway sampler (runway.ts); the
+ * headless tests use the flat default (see the constructor).
+ */
+export type GroundSampler = (x: number, z: number) => GroundInfo;
+
+/** The verdict of the most recent touchdown (Phase 7). */
+export interface TouchdownInfo {
+  quality: "smooth" | "hard" | "off-runway";
+  surface: SurfaceKind;
+  /** Vertical speed at contact, m/s (negative = descending). */
+  verticalSpeed: number;
+  /** Increments per touchdown so the HUD can react to a new one. */
+  sequence: number;
+}
+
 export interface FlightState {
   /** Airspeed in m/s (magnitude of the velocity vector). */
   airspeed: number;
@@ -119,6 +173,21 @@ export interface FlightState {
   lift: number;
   drag: number;
   thrust: number;
+  /** Phase 7 ground interaction: high-level flight phase. */
+  phase: "ground" | "air" | "crashed";
+  /** True while in contact with the runway asphalt. */
+  onRunway: boolean;
+  /** Surface currently under the aircraft. */
+  surface: SurfaceKind;
+  /** Height above the local surface, metres (0 on the ground). */
+  heightAboveGround: number;
+  /** World position (for approach/distance logic in the HUD). */
+  posX: number;
+  posZ: number;
+  crashed: boolean;
+  crashReason: string;
+  /** Verdict of the latest touchdown, or null since the last liftoff. */
+  touchdown: TouchdownInfo | null;
 }
 
 export class AircraftController {
@@ -131,6 +200,23 @@ export class AircraftController {
   readonly velocity = new Vector3();
   /** True while in contact with the ground. */
   grounded = true;
+  /** Phase 7: latched crash state — controls freeze until reset(). */
+  crashed = false;
+  crashReason = "";
+  /** Phase 7: verdict of the most recent touchdown. */
+  lastTouchdown: TouchdownInfo | null = null;
+
+  private readonly groundSampler: GroundSampler;
+  private lastGround: GroundInfo = {
+    height: GROUND_Y - GEAR_DEPTH,
+    surface: "runway",
+    slopeDeg: 0,
+    gradeX: 0,
+    gradeZ: 0,
+    onRunway: true,
+  };
+  private airTime = 0;
+  private touchdownSeq = 0;
 
   // Smoothed control deflections, each -1..1
   private pitchInput = 0;
@@ -154,9 +240,20 @@ export class AircraftController {
   private readonly _force = new Vector3();
   private readonly _tmp = new Vector3();
 
-  constructor(aircraft: TransformNode, startPosition: Vector3) {
+  constructor(aircraft: TransformNode, startPosition: Vector3, groundSampler?: GroundSampler) {
     this.aircraft = aircraft;
     this.startPosition = startPosition.clone();
+    // Default: the pre-Phase-7 flat world (runway datum everywhere).
+    this.groundSampler =
+      groundSampler ??
+      (() => ({
+        height: GROUND_Y - GEAR_DEPTH,
+        surface: "runway" as SurfaceKind,
+        slopeDeg: 0,
+        gradeX: 0,
+        gradeZ: 0,
+        onRunway: true,
+      }));
     this.reset();
   }
 
@@ -179,6 +276,11 @@ export class AircraftController {
     this.rollInput = 0;
     this.yawInput = 0;
     this.grounded = true;
+    this.crashed = false;
+    this.crashReason = "";
+    this.lastTouchdown = null;
+    this.airTime = 0;
+    this.lastGround = this.groundSampler(this.startPosition.x, this.startPosition.z);
     this._alphaDeg = 0;
     this._stallFactor = 0;
     this._lift = 0;
@@ -193,14 +295,28 @@ export class AircraftController {
   step(dt: number, input: InputManager): void {
     if (dt <= 0) return;
     const node = this.aircraft;
-    const wasGrounded = node.position.y <= GROUND_Y + 0.001;
+    if (this.crashed) {
+      // Frozen until reset(): no forces, no control response. The
+      // HUD crash overlay offers the reset from here.
+      this.grounded = true;
+      return;
+    }
+    // Phase 7: the ground is whatever the sampler says is under the
+    // aircraft (runway asphalt, island terrain, or the sea).
+    const groundNow = this.groundSampler(node.position.x, node.position.z);
+    this.lastGround = groundNow;
+    const contactY = groundNow.height + GEAR_DEPTH;
+    const wasGrounded = node.position.y <= contactY + 0.001;
 
     // ---------- Controls ----------
+    // Spring-loaded throttle: Shift raises, Ctrl cuts fast, and with
+    // neither held the power decays to zero (see constants above).
     if (input.isDown("ShiftLeft", "ShiftRight")) {
-      this.throttle = Math.min(1, this.throttle + THROTTLE_RATE * dt);
-    }
-    if (input.isDown("ControlLeft", "ControlRight")) {
-      this.throttle = Math.max(0, this.throttle - THROTTLE_RATE * dt);
+      this.throttle = Math.min(1, this.throttle + THROTTLE_UP_RATE * dt);
+    } else if (input.isDown("ControlLeft", "ControlRight")) {
+      this.throttle = Math.max(0, this.throttle - THROTTLE_DOWN_RATE * dt);
+    } else {
+      this.throttle = Math.max(0, this.throttle - THROTTLE_DECAY_RATE * dt);
     }
     this.pitchInput = damp(
       this.pitchInput,
@@ -295,9 +411,29 @@ export class AircraftController {
     }
 
     // Rolling friction while on the ground (plus a little brake feel
-    // at idle so the aircraft can actually stop)
+    // at idle so the aircraft can actually stop). Rough ground rolls
+    // noticeably worse than asphalt (Phase 7).
     if (wasGrounded) {
-      const friction = this.throttle < 0.02 ? 1.1 : 0.35;
+      const rolling = groundNow.surface === "runway" ? 0.35 : 0.85;
+      const braking = groundNow.surface === "runway" ? 1.1 : 1.5;
+      let friction = this.throttle < 0.02 ? braking : rolling;
+      if (groundNow.surface === "terrain") {
+        // Slope resistance: gravity's along-slope component fights
+        // uphill rolls and feeds downhill ones, so a plane that puts
+        // down on a hillside slides to a stop instead of motoring
+        // over the crest.
+        const hvx = this.velocity.x;
+        const hvz = this.velocity.z;
+        const hs = Math.hypot(hvx, hvz);
+        if (hs > 0.5) {
+          const gradeAlong = (groundNow.gradeX * hvx + groundNow.gradeZ * hvz) / hs;
+          friction += GRAVITY * gradeAlong;
+        }
+        // Rolling into a near-cliff face is an impact, not a rollout.
+        if (groundNow.slopeDeg > 24 && hs > 6) {
+          this.registerCrash("Terrain impact — steep slope");
+        }
+      }
       const hSpeed = Math.hypot(this.velocity.x, this.velocity.z);
       if (hSpeed > 0.001) {
         const newHSpeed = Math.max(0, hSpeed - friction * dt);
@@ -315,13 +451,31 @@ export class AircraftController {
     this.velocity.scaleToRef(dt, this._tmp);
     node.position.addInPlace(this._tmp);
 
-    // Ground / ceiling contact
-    if (node.position.y <= GROUND_Y) {
-      node.position.y = GROUND_Y;
+    // Ground / ceiling contact (Phase 7: terrain-aware). Re-sample at
+    // the new position — the surface can change within one step.
+    const ground = this.groundSampler(node.position.x, node.position.z);
+    this.lastGround = ground;
+    const groundContactY = ground.height + GEAR_DEPTH;
+    if (node.position.y <= groundContactY) {
+      const impactVy = this.velocity.y;
+      const impactSpeed = this.velocity.length();
+      node.position.y = groundContactY;
       if (this.velocity.y < 0) this.velocity.y = 0;
+      if (!this.grounded) {
+        if (this.airTime > BUMP_MAX_AIR_TIME) {
+          // A real touchdown (not a bump in the ground roll): judge it.
+          this.evaluateTouchdown(ground, impactVy, impactSpeed);
+        } else if (impactVy < -9) {
+          // Fell off an edge and slammed — a crash even in a "bump".
+          this.registerCrash("Impact too hard — high sink rate");
+        }
+      }
       this.grounded = true;
+      this.airTime = 0;
     } else {
+      if (this.grounded) this.lastTouchdown = null; // liftoff consumes the verdict
       this.grounded = false;
+      this.airTime += dt;
     }
     if (node.position.y > CEILING_Y) {
       node.position.y = CEILING_Y;
@@ -469,6 +623,66 @@ export class AircraftController {
     node.rotate(AXIS_RIGHT, pitchRate * dt, Space.LOCAL);
   }
 
+  /**
+   * Judge a touchdown at the moment of contact (Phase 7): sink rate,
+   * attitude, surface and slope decide between a smooth landing, a
+   * hard/off-runway arrival, and a crash. Ordinary safe landings sit
+   * far inside these limits — the crash lines are structural, not
+   * "slightly firm" lines.
+   */
+  private evaluateTouchdown(ground: GroundInfo, vy: number, speed: number): void {
+    this.computeBasis();
+    const pitchDeg = Math.asin(clamp(this._forward.y, -1, 1)) * (180 / Math.PI);
+    const rollDeg = -Math.asin(clamp(this._right.y, -1, 1)) * (180 / Math.PI);
+    const sink = -vy;
+    if (ground.surface === "water") {
+      this.registerCrash("Ditched in the water");
+      return;
+    }
+    if (sink > SINK_CRASH) {
+      this.registerCrash("Impact too hard — high sink rate");
+      return;
+    }
+    if (Math.abs(rollDeg) > ROLL_CRASH_DEG) {
+      this.registerCrash("Wing strike — too much bank at touchdown");
+      return;
+    }
+    if (pitchDeg < PITCH_CRASH_DEG) {
+      this.registerCrash("Nose-first impact");
+      return;
+    }
+    if (ground.surface === "terrain" && ground.slopeDeg > TERRAIN_SLOPE_CRASH_DEG) {
+      this.registerCrash("Terrain impact — steep slope");
+      return;
+    }
+    if (ground.surface === "terrain" && speed > TERRAIN_SPEED_CRASH) {
+      this.registerCrash("Too fast for rough ground");
+      return;
+    }
+    const quality: TouchdownInfo["quality"] = ground.onRunway
+      ? sink <= SINK_SMOOTH
+        ? "smooth"
+        : "hard"
+      : sink <= SINK_SMOOTH
+        ? "off-runway"
+        : "hard";
+    this.touchdownSeq += 1;
+    this.lastTouchdown = {
+      quality,
+      surface: ground.surface,
+      verticalSpeed: vy,
+      sequence: this.touchdownSeq,
+    };
+  }
+
+  /** Latch the crashed state: motion stops, controls go dead. */
+  private registerCrash(reason: string): void {
+    this.crashed = true;
+    this.crashReason = reason;
+    this.velocity.set(0, 0, 0);
+    this.throttle = 0;
+  }
+
   /** Snapshot of the simulation for the HUD and debugging. */
   getState(): FlightState {
     this.computeBasis();
@@ -488,6 +702,18 @@ export class AircraftController {
       lift: this._lift,
       drag: this._drag,
       thrust: this._thrust,
+      phase: this.crashed ? "crashed" : this.grounded ? "ground" : "air",
+      onRunway: this.lastGround.onRunway,
+      surface: this.lastGround.surface,
+      heightAboveGround: Math.max(
+        0,
+        this.aircraft.position.y - (this.lastGround.height + GEAR_DEPTH),
+      ),
+      posX: this.aircraft.position.x,
+      posZ: this.aircraft.position.z,
+      crashed: this.crashed,
+      crashReason: this.crashReason,
+      touchdown: this.lastTouchdown,
     };
   }
 

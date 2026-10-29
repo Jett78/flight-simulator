@@ -110,6 +110,10 @@ export function Hud({
   const aoaValue = useRef<HTMLSpanElement>(null);
   const stallEl = useRef<HTMLDivElement>(null);
   const groundChip = useRef<HTMLDivElement>(null);
+  const statusEl = useRef<HTMLDivElement>(null);
+  const statusTextEl = useRef<HTMLSpanElement>(null);
+  const crashEl = useRef<HTMLDivElement>(null);
+  const crashReasonEl = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -125,6 +129,12 @@ export function Hud({
     };
     measure();
     window.addEventListener("resize", measure);
+
+    // Phase 7 status/crash bookkeeping (edge detection, not per-frame state)
+    let prevGrounded = true;
+    let liftoffAt = 0;
+    let lastStatusKey = "";
+    let crashShown = false;
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -189,6 +199,61 @@ export function Hud({
           groundChip.current.dataset.air = s.grounded ? "false" : "true";
         }
       }
+
+      // Phase 7: flight-status line — derived from the real flight
+      // phase, touchdown verdict and position each frame, written to
+      // the DOM only when it actually changes.
+      const now = performance.now();
+      if (prevGrounded && !s.grounded) liftoffAt = now;
+      prevGrounded = s.grounded;
+      let status = "";
+      let tone = "info";
+      if (!s.crashed) {
+        if (s.touchdown && s.grounded) {
+          const td = s.touchdown;
+          if (td.quality === "smooth") {
+            status = `✓ Successful landing (${td.verticalSpeed.toFixed(1)} m/s)`;
+            tone = "ok";
+          } else if (td.quality === "hard") {
+            status = `⚠ Hard landing (${td.verticalSpeed.toFixed(1)} m/s)`;
+            tone = "warn";
+          } else {
+            status = `✓ Off-runway landing (${td.verticalSpeed.toFixed(1)} m/s)`;
+            tone = "ok";
+          }
+        } else if (!s.grounded && liftoffAt > 0 && now - liftoffAt < 4000) {
+          status = "✈ Airborne";
+          tone = "ok";
+        } else if (s.grounded) {
+          if (s.airspeed < 0.5) {
+            status = s.onRunway ? "Ready for takeoff" : "On the ground — off runway";
+          } else {
+            status = s.onRunway ? "Takeoff roll" : "Rolling — off runway";
+          }
+        } else if (
+          s.heightAboveGround < 70 &&
+          Math.hypot(s.posX, s.posZ) < 600 &&
+          s.verticalSpeed < 1
+        ) {
+          status = "Approaching runway";
+        }
+      }
+      const statusKey = `${status}|${tone}`;
+      if (statusEl.current && statusKey !== lastStatusKey) {
+        lastStatusKey = statusKey;
+        statusEl.current.style.opacity = status ? "1" : "0";
+        statusEl.current.dataset.tone = tone;
+        if (statusTextEl.current) statusTextEl.current.textContent = status;
+      }
+
+      // Phase 7: crash overlay (reason + reset action).
+      if (crashEl.current && s.crashed !== crashShown) {
+        crashShown = s.crashed;
+        crashEl.current.style.display = s.crashed ? "flex" : "none";
+        if (s.crashed && crashReasonEl.current) {
+          crashReasonEl.current.textContent = s.crashReason;
+        }
+      }
     };
 
     raf = requestAnimationFrame(tick);
@@ -202,7 +267,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 6 · FLIGHT HUD</div>
+        <div className="hud-badge">PHASE 7 · RUNWAY & LANDING</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -246,14 +311,16 @@ export function Hud({
                 <strong>Q / E</strong> yaw — left / right
               </li>
               <li>
-                <strong>Shift / Ctrl</strong> throttle up / down
+                <strong>Shift (hold) / Ctrl</strong> throttle — hold Shift for
+                power, release and power falls; Ctrl cuts fast
               </li>
               <li>
                 <strong>C</strong> camera · <strong>R</strong> reset aircraft ·{" "}
                 <strong>P</strong> pause
               </li>
               <li className="hud-help-tip">
-                Hold Shift — at ~110 km/h pull S to take off
+                Hold Shift — at ~100 km/h pull S to take off. Land back on
+                the runway gently: sink under ~2.5 m/s, wings level.
               </li>
             </ul>
           </aside>
@@ -265,6 +332,21 @@ export function Hud({
         ⚠ STALL
       </div>
       {paused && <div className="hud-paused">⏸ PAUSED</div>}
+
+      {/* Phase 7 flight-status line (ready / airborne / approach / landing) */}
+      <div ref={statusEl} className="hud-status" data-tone="info" style={{ opacity: 0 }}>
+        <span ref={statusTextEl} />
+      </div>
+
+      {/* Phase 7 crash overlay */}
+      <div ref={crashEl} className="hud-crash" style={{ display: "none" }}>
+        <div className="hud-crash-title">✕ CRASH DETECTED</div>
+        <div ref={crashReasonEl} className="hud-crash-reason" />
+        <button type="button" className="hud-btn hud-crash-btn" onClick={onResetAircraft}>
+          ⟲ Reset aircraft
+        </button>
+        <div className="hud-crash-hint">or press R</div>
+      </div>
 
       {/* Airspeed — left edge */}
       <div className="hud-left">

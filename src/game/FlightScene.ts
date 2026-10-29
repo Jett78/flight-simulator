@@ -12,6 +12,7 @@ import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
+import { createGroundSampler } from "./runway";
 
 /**
  * Coordinate convention (shared by the airplane model, the controller
@@ -129,7 +130,9 @@ export class FlightScene {
     this.aircraft = this.buildWorld(shadowGenerator);
 
     this.input = new InputManager();
-    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START);
+    // Phase 7: the controller judges ground contact, touchdowns and
+    // crashes against the real island/runway ground sampler.
+    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START, createGroundSampler());
 
     // Development-only debug handle (Phase 4 §6): in `npm run dev`,
     // open the console and use __flightSim.state() / __flightSim.reset()

@@ -67,18 +67,18 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]); // throttle to ~100%
-  const tRoll = runUntil([], () => controller.getState().airspeed >= 33, 30);
+  const tRoll = runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
   const sRoll = controller.getState();
   check(
     "accelerates on ground roll",
     sRoll.airspeed >= 33 && sRoll.grounded,
     `reached 33 m/s in ${tRoll.toFixed(1)}s, grounded=${sRoll.grounded}`,
   );
-  // Rotate: hold S (nose up) and keep full throttle (throttle stays 1 without keys)
-  runUntil(["KeyS"], () => controller.getState().altitude > 3, 12);
+  // Rotate: hold S (nose up) while still holding Shift (spring throttle)
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 3, 12);
   const sAir = controller.getState();
   check("takes off after rotation", !sAir.grounded && sAir.altitude > 3, `alt=${sAir.altitude.toFixed(1)}m v=${sAir.airspeed.toFixed(1)}`);
-  run(4, []); // hands off, should keep climbing or hold under stability
+  run(4, ["ShiftLeft"]); // hands off the stick (throttle held), should keep climbing
   const sClimb = controller.getState();
   check("climbs / sustains flight", sClimb.altitude > 8, `alt=${sClimb.altitude.toFixed(1)}m VS=${sClimb.verticalSpeed.toFixed(1)}`);
   (globalThis as { __sim2?: unknown }).__sim2 = { controller, run, runUntil };
@@ -87,12 +87,12 @@ function makeSim() {
 // ---------- 3. Banked turn (continues sim 2's aircraft) ----------
 {
   const { controller, run, runUntil } = (globalThis as { __sim2: ReturnType<typeof makeSim> }).__sim2;
-  runUntil(["KeyS"], () => controller.getState().altitude > 45, 20); // climb to safe altitude first
-  run(1, []);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude > 45 && controller.getState().airspeed >= 32, 40); // settle into cruise first
+  run(1, ["ShiftLeft"]);
   const h0 = controller.getState().headingDeg;
-  run(0.45, ["KeyD"]); // bank right (~25-30 degrees)
+  run(0.45, ["ShiftLeft", "KeyD"]); // bank right (~25-30 degrees)
   const banked = controller.getState();
-  run(6, []); // let the turn develop under lift + stability
+  run(6, ["ShiftLeft"]); // let the turn develop under lift + stability
   const h1 = controller.getState().headingDeg;
   let dh = h1 - h0;
   if (dh < -180) dh += 360;
@@ -112,12 +112,13 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 33, 30);
-  runUntil(["KeyS"], () => controller.getState().altitude > 40, 20);
-  run(1, []);
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 6, 12);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude >= 40 && controller.getState().airspeed >= 32, 40);
+  run(1, ["ShiftLeft"]);
   const h0 = controller.getState().headingDeg;
-  run(0.15, ["KeyD"]); // a tap, not a hold
-  run(5, []);
+  run(0.15, ["ShiftLeft", "KeyD"]); // a tap, not a hold
+  run(5, ["ShiftLeft"]);
   const h1 = controller.getState().headingDeg;
   let dh = h1 - h0;
   if (dh < -180) dh += 360;
@@ -132,12 +133,13 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 33, 30);
-  runUntil(["KeyS"], () => controller.getState().altitude > 55, 25);
-  run(1.5, []);
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 6, 12);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude >= 55 && controller.getState().airspeed >= 32, 45);
+  run(1.5, ["ShiftLeft"]);
   const before = controller.getState();
-  run(0.7, ["KeyD"]); // build a moderate bank
-  run(6, []); // hands-off turn
+  run(0.7, ["ShiftLeft", "KeyD"]); // build a moderate bank
+  run(6, ["ShiftLeft"]); // hands-off turn
   const after = controller.getState();
   let dh = after.headingDeg - before.headingDeg;
   if (dh < -180) dh += 360;
@@ -155,17 +157,18 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 33, 30);
-  runUntil(["KeyS"], () => controller.getState().altitude > 160, 60);
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 6, 12);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude >= 160 && controller.getState().airspeed >= 32, 60);
   // Build speed in a dive, level out, and bank promptly (speed bleeds
   // back toward trim speed over ~20 s, so don't wait). This mirrors
   // the live scenario: fast shallow flight at 200+ km/h.
-  runUntil(["KeyW"], () => controller.getState().airspeed >= 57 || controller.getState().altitude < 110, 12);
-  runUntil(["KeyS"], () => controller.getState().verticalSpeed >= -2, 6);
-  run(0.3, []);
+  runUntil(["ShiftLeft", "KeyW"], () => controller.getState().airspeed >= 57 || controller.getState().altitude < 110, 12);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().verticalSpeed >= -2, 6);
+  run(0.3, ["ShiftLeft"]);
   const before = controller.getState();
-  run(0.7, ["KeyD"]);
-  run(6, []);
+  run(0.7, ["ShiftLeft", "KeyD"]);
+  run(6, ["ShiftLeft"]);
   const after = controller.getState();
   let dh = after.headingDeg - before.headingDeg;
   if (dh < -180) dh += 360;
@@ -185,9 +188,10 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 33, 30);
-  runUntil(["KeyS"], () => controller.getState().altitude > 80, 30);
-  run(1.5, []); // settle in climb attitude hands-off (stall entry needs altitude in hand)
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 6, 12);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude >= 80 && controller.getState().airspeed >= 32, 45);
+  run(1.5, ["ShiftLeft"]); // settle in climb attitude hands-off (stall entry needs altitude in hand)
   // Kill the throttle and hold the nose up hard -> stall
   run(2.5, ["ControlLeft"]); // throttle -> 0
   let maxStall = 0;
@@ -215,8 +219,8 @@ function makeSim() {
   // throttle up, W only until the stall breaks, brief S pull-out,
   // then hands off and let stability settle it.
   runUntil(["ShiftLeft", "KeyW"], () => controller.getState().stallFactor < 0.05, 3);
-  run(1.2, ["KeyS"]);
-  run(5, []);
+  run(1.2, ["ShiftLeft", "KeyS"]);
+  run(5, ["ShiftLeft"]);
   const sRec = controller.getState();
   check(
     "recovers from stall",
@@ -237,9 +241,10 @@ function makeSim() {
 {
   const { controller, run, runUntil } = makeSim();
   run(2.5, ["ShiftLeft"]);
-  runUntil([], () => controller.getState().airspeed >= 33, 30);
-  runUntil(["KeyS"], () => controller.getState().altitude > 30, 15);
-  run(1, []);
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 33, 30);
+  runUntil(["ShiftLeft", "KeyS"], () => controller.getState().altitude > 6, 12);
+  runUntil(["ShiftLeft"], () => controller.getState().altitude >= 30 && controller.getState().airspeed >= 30, 30);
+  run(1, ["ShiftLeft"]);
   const altBefore = controller.getState().altitude;
   run(3, ["ControlLeft"]); // throttle to ~0 (2.2s to drain)
   // Idle from a climb attitude first trades speed for height (zoom),
@@ -262,9 +267,9 @@ function makeSim() {
   const b = makeSim();
   const timeline = (t: number): string[] => {
     if (t < 2.5) return ["ShiftLeft"];
-    if (t < 9) return [];
-    if (t < 12) return ["KeyS"];
-    return [];
+    if (t < 9) return ["ShiftLeft"];
+    if (t < 12) return ["ShiftLeft", "KeyS"];
+    return ["ShiftLeft"];
   };
   const total = 16;
   for (let t = 0; t < total; t += DT) a.run(DT, timeline(t));
@@ -285,6 +290,71 @@ function makeSim() {
   // the same timeline), not physics divergence — the point is the two
   // runs fly the same trajectory instead of one blowing up.
   check("physics independent of frame rate", dist < 6, `end-position delta=${dist.toFixed(2)}m after 16s`);
+}
+
+
+// ---------- 7. Spring throttle: release = power drops (Jeet, 2026-10-29) ----------
+{
+  const { controller, run } = makeSim();
+  run(2, ["ShiftLeft"]);
+  const thrFull = controller.getState().throttle;
+  run(1, []); // release everything: power must fall on its own
+  const thrDecay = controller.getState().throttle;
+  run(1.2, []);
+  const thrZero = controller.getState().throttle;
+  check(
+    "throttle rises holding Shift, decays when released",
+    thrFull > 0.95 && thrDecay < 0.65 && thrDecay > 0.25 && thrZero < 0.02,
+    `full=${thrFull.toFixed(2)} after 1s released=${thrDecay.toFixed(2)} after 2.2s=${thrZero.toFixed(2)}`,
+  );
+  run(1.5, ["ShiftLeft"]);
+  const thrUp = controller.getState().throttle;
+  run(0.5, ["ControlLeft"]); // Ctrl = fast cut (faster than the decay)
+  const thrCut = controller.getState().throttle;
+  check(
+    "Ctrl cuts throttle faster than decay",
+    thrUp > 0.85 && thrCut < thrUp - 0.5,
+    `up=${thrUp.toFixed(2)} after 0.5s Ctrl=${thrCut.toFixed(2)}`,
+  );
+}
+
+// ---------- 8. Liftoff happens well within the runway (Jeet, 2026-10-29) ----------
+{
+  const { controller, node, runUntil } = makeSim();
+  runUntil(["ShiftLeft"], () => controller.getState().airspeed >= 27, 20);
+  runUntil(["ShiftLeft", "KeyS"], () => !controller.getState().grounded, 15);
+  const s = controller.getState();
+  const roll = 68 - node.position.z; // start z=68, runway end at z=-110 (178 m ahead)
+  check(
+    "liftoff within the runway",
+    !s.grounded && roll > 40 && roll <= 130,
+    `liftoff after ${roll.toFixed(0)} m of roll at ${(s.airspeed * 3.6).toFixed(0)} km/h (178 m available)`,
+  );
+}
+
+// ---------- 9. A turns left, D turns right ----------
+{
+  const settle = () => {
+    const sim = makeSim();
+    sim.run(2.5, ["ShiftLeft"]);
+    sim.runUntil(["ShiftLeft"], () => sim.controller.getState().airspeed >= 33, 30);
+    sim.runUntil(["ShiftLeft", "KeyS"], () => sim.controller.getState().altitude > 6, 12);
+    sim.runUntil(["ShiftLeft"], () => sim.controller.getState().altitude >= 45 && sim.controller.getState().airspeed >= 32, 40);
+    sim.run(1, ["ShiftLeft"]);
+    return sim;
+  };
+  const wrap = (d: number) => (d < -180 ? d + 360 : d > 180 ? d - 360 : d);
+  const a = settle();
+  const ha0 = a.controller.getState().headingDeg;
+  a.run(0.6, ["ShiftLeft", "KeyA"]);
+  a.run(5, ["ShiftLeft"]);
+  const dhA = wrap(a.controller.getState().headingDeg - ha0);
+  const d = settle();
+  const hd0 = d.controller.getState().headingDeg;
+  d.run(0.6, ["ShiftLeft", "KeyD"]);
+  d.run(5, ["ShiftLeft"]);
+  const dhD = wrap(d.controller.getState().headingDeg - hd0);
+  check("A banks left / D banks right", dhA < -5 && dhD > 5, `A: heading ${dhA.toFixed(0)}°, D: heading ${dhD.toFixed(0)}°`);
 }
 
 console.log(failures === 0 ? "\nALL PHYSICS TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
