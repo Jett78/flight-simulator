@@ -46,7 +46,22 @@ The mission minimap (gold next / blue later / runway line /
 route, `MAP_EXTENT` 1,750) and the steering arrow already
 covered the map leg of this fix and are unchanged.
 
-## Phase 13 — Solid buildings & trees, explosion on crash (current)
+## Patch 0.13.1 — Runway/apron flicker fixed (current)
+
+Jeet spotted flickering black patches on the ground in front of
+the hangars. Cause: classic z-fighting — the taxiway slab
+(x −56..−8) and the apron slab (x −89..−51) overlapped by 5 m
+with both top faces at exactly y = 0.12, so the dark asphalt and
+light concrete faces fought for the same pixels. Fixes in
+`createAirport`: the taxiway now ends exactly at the apron's
+edge (x −51..−9; verified overlap 0.00 in the built scene); the
+apron edge lights moved onto the apron with their bases flush
+(they floated 5 mm); and every roof slab / the tower cab was
+lifted 0.03 so no face rests exactly on another (roofline
+shimmer). No visual layout change beyond the taxiway being 6 m
+narrower where it meets the apron.
+
+## Phase 13 — Solid buildings & trees, explosion on crash
 
 Jeet's report: you could fly/drive straight THROUGH the airport
 buildings. Now everything solid is solid.

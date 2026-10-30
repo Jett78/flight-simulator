@@ -159,12 +159,16 @@ export function createAirport(scene: Scene): AirportResult {
   }
 
   // ---------- Taxiway + apron (west side) ----------
-  box("taxiway", { width: 48, height: 0.12, depth: 9 }, [-32, 0.06, 30], asphalt);
+  // The taxiway ends exactly at the apron's east edge: the two
+  // slabs used to overlap by 5 m with both tops at y=0.12, and
+  // the coplanar dark/light faces z-fought (flickering black
+  // patches in front of the hangars).
+  box("taxiway", { width: 42, height: 0.12, depth: 9 }, [-30, 0.06, 30], asphalt);
   // Taxiway centreline
   box(
     "taxiway-centreline",
-    { width: 46, height: 0.14, depth: 0.5 },
-    [-32, 0.07, 30],
+    { width: 40, height: 0.14, depth: 0.5 },
+    [-30, 0.07, 30],
     markingYellow,
   );
   box("apron", { width: 38, height: 0.12, depth: 46 }, [-70, 0.06, 30], concrete);
@@ -173,7 +177,7 @@ export function createAirport(scene: Scene): AirportResult {
   const hangar = (name: string, x: number, z: number, w: number, d: number, h: number) => {
     box(name, { width: w, height: h, depth: d }, [x, h / 2, z], wallLight, { cast: true, solid: true });
     // Flat overhanging roof slab — reads clearly as a hangar from the air
-    box(`${name}-roof`, { width: w + 1.6, height: 0.6, depth: d + 1.6 }, [x, h + 0.3, z], roofHangar, {
+    box(`${name}-roof`, { width: w + 1.6, height: 0.6, depth: d + 1.6 }, [x, h + 0.33, z], roofHangar, {
       cast: true,
     });
     // Large front door facing the apron (+X side)
@@ -189,16 +193,16 @@ export function createAirport(scene: Scene): AirportResult {
 
   // ---------- Terminal + office (east side) ----------
   box("terminal", { width: 32, height: 9, depth: 14 }, [36, 4.5, -26], facadeMat, { cast: true, solid: true });
-  box("terminal-roof", { width: 34, height: 0.7, depth: 16 }, [36, 9.35, -26], roofDark, { cast: true });
+  box("terminal-roof", { width: 34, height: 0.7, depth: 16 }, [36, 9.38, -26], roofDark, { cast: true });
   // Terminal window band
   box("terminal-glass", { width: 32.3, height: 2.6, depth: 10 }, [36, 5.6, -26], glass);
   box("office", { width: 16, height: 6, depth: 11 }, [34, 3, 10], facadeMat, { cast: true, solid: true });
-  box("office-roof", { width: 17.5, height: 0.6, depth: 12.5 }, [34, 6.3, 10], roofDark, { cast: true });
+  box("office-roof", { width: 17.5, height: 0.6, depth: 12.5 }, [34, 6.33, 10], roofDark, { cast: true });
 
   // ---------- Control tower (east, south of terminal) ----------
   box("tower-shaft", { width: 5.5, height: 21, depth: 5.5 }, [30, 10.5, -62], facadeMat, { cast: true, solid: true });
-  box("tower-cab", { width: 9, height: 3.6, depth: 9 }, [30, 22.8, -62], glass, { cast: true });
-  box("tower-roof", { width: 10, height: 0.6, depth: 10 }, [30, 24.9, -62], roofDark, { cast: true });
+  box("tower-cab", { width: 9, height: 3.6, depth: 9 }, [30, 22.83, -62], glass, { cast: true });
+  box("tower-roof", { width: 10, height: 0.6, depth: 10 }, [30, 24.93, -62], roofDark, { cast: true });
 
   // ---------- Phase 12: a busier airport ----------
   // Third hangar (west, south of hangar B)
@@ -206,7 +210,7 @@ export function createAirport(scene: Scene): AirportResult {
 
   // Cargo terminal (east, south of the passenger terminal)
   box("cargo", { width: 20, height: 8, depth: 16 }, [64, 4, -30], facadeMat, { cast: true, solid: true });
-  box("cargo-roof", { width: 22, height: 0.7, depth: 18 }, [64, 8.35, -30], roofDark, { cast: true });
+  box("cargo-roof", { width: 22, height: 0.7, depth: 18 }, [64, 8.38, -30], roofDark, { cast: true });
   box("cargo-glass", { width: 20.3, height: 2.2, depth: 11 }, [64, 5.2, -30], glass);
   // Freight containers stacked by the cargo apron
   const containerSpots: Array<[number, number, number, StandardMaterial]> = [
@@ -221,11 +225,11 @@ export function createAirport(scene: Scene): AirportResult {
 
   // Terminal 2: a taller second block east of the office
   box("terminal-2", { width: 14, height: 13, depth: 12 }, [60, 6.5, 18], facadeMat, { cast: true, solid: true });
-  box("terminal-2-roof", { width: 16, height: 0.7, depth: 14 }, [60, 13.35, 18], roofDark, { cast: true });
+  box("terminal-2-roof", { width: 16, height: 0.7, depth: 14 }, [60, 13.38, 18], roofDark, { cast: true });
 
   // Fire station (east, far south)
   box("fire-station", { width: 14, height: 5, depth: 10 }, [54, 2.5, -94], wallLight, { cast: true, solid: true });
-  box("fire-station-roof", { width: 15.5, height: 0.6, depth: 11.5 }, [54, 5.3, -94], roofDark, { cast: true });
+  box("fire-station-roof", { width: 15.5, height: 0.6, depth: 11.5 }, [54, 5.33, -94], roofDark, { cast: true });
   box("fire-station-door", { width: 0.3, height: 3.4, depth: 7 }, [46.9, 1.7, -94], doorDark);
 
   // Fuel depot (west of the hangars): three standing tanks + pump house
@@ -280,7 +284,7 @@ export function createAirport(scene: Scene): AirportResult {
 
   // Apron edge lights (small emissive blocks along the apron's east edge)
   for (let z = 10; z <= 52; z += 6) {
-    box(`apron-light-${z}`, { width: 0.35, height: 0.35, depth: 0.35 }, [-50, 0.3, z], markingYellow);
+    box(`apron-light-${z}`, { width: 0.35, height: 0.35, depth: 0.35 }, [-52, 0.295, z], markingYellow);
   }
 
   // ---------- Simple trees for scale (cones + trunks) ----------
