@@ -31,6 +31,7 @@ import { getAircraftConfig, type AircraftConfig } from "./aircraftConfigs";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { heliObstacles, loadHelicopters } from "./createHelicopters";
+import { loadParkedAircraft, parkedObstacles } from "./createParkedAircraft";
 import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
 import { createGroundSampler } from "./runway";
@@ -692,12 +693,15 @@ export class FlightScene {
       ...airport.obstacles,
       ...island.obstacles,
       ...heliObstacles(),
+      ...parkedObstacles(),
     ]);
     for (const mesh of airport.shadowCasters) shadows.addShadowCaster(mesh);
-    // Parked helicopters on the apron (v0.21.0): collision boxes
-    // are already in the field above; the models stream in async
-    // and pop onto their spots when ready.
+    // Parked helicopters on the apron (v0.21.0) and parked
+    // aircraft (v0.22.0): collision boxes are already in the
+    // field above; the models stream in async and pop onto
+    // their spots when ready.
     void loadHelicopters(this.scene, (mesh) => shadows.addShadowCaster(mesh));
+    void loadParkedAircraft(this.scene, (mesh) => shadows.addShadowCaster(mesh));
 
     // Multi-aircraft Phase 4: the visual comes from the active
     // config — a supplied glTF, a built-in procedural model, or

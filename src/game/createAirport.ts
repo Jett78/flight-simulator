@@ -174,17 +174,18 @@ export function createAirport(scene: Scene): AirportResult {
   box("apron", { width: 38, height: 0.12, depth: 46 }, [-70, 0.06, 30], concrete);
 
   // ---------- Hangars (west, off the apron) ----------
-  const hangar = (name: string, x: number, z: number, w: number, d: number, h: number) => {
+  const hangar = (name: string, x: number, z: number, w: number, d: number, h: number, doorSign = 1) => {
     box(name, { width: w, height: h, depth: d }, [x, h / 2, z], wallLight, { cast: true, solid: true });
     // Flat overhanging roof slab — reads clearly as a hangar from the air
     box(`${name}-roof`, { width: w + 1.6, height: 0.6, depth: d + 1.6 }, [x, h + 0.33, z], roofHangar, {
       cast: true,
     });
-    // Large front door facing the apron (+X side)
+    // Large front door (west hangars face the apron, +X; the
+    // east maintenance hangar faces the runway, -X)
     box(
       `${name}-door`,
       { width: 0.3, height: h * 0.72, depth: d * 0.72 },
-      [x + w / 2 + 0.05, h * 0.36, z],
+      [x + doorSign * (w / 2 + 0.05), h * 0.36, z],
       doorDark,
     );
   };
@@ -286,6 +287,35 @@ export function createAirport(scene: Scene): AirportResult {
   for (let z = 10; z <= 52; z += 6) {
     box(`apron-light-${z}`, { width: 0.35, height: 0.35, depth: 0.35 }, [-52, 0.295, z], markingYellow);
   }
+
+  // ---------- v0.22: a bigger airport (Jeet) ----------
+  // More hangars: the west row grows both ways, and a wide
+  // maintenance hangar opens on the east side, door to the runway.
+  hangar("hangar-d", -70, -120, 28, 22, 11);
+  hangar("hangar-e", -70, 86, 24, 20, 9.5);
+  hangar("hangar-maintenance", 92, 8, 26, 18, 10, -1);
+
+  // Airport admin building (east, between cargo and the fire station)
+  box("admin", { width: 16, height: 8, depth: 12 }, [58, 4, -64], facadeMat, { cast: true, solid: true });
+  box("admin-roof", { width: 17.5, height: 0.6, depth: 13.5 }, [58, 8.35, -64], roofDark, { cast: true });
+  box("admin-glass", { width: 16.3, height: 2.2, depth: 9 }, [58, 5.4, -64], glass);
+
+  // General-aviation clubhouse west of the apron, by the helicopters
+  box("ga-clubhouse", { width: 12, height: 5, depth: 9 }, [-108, 2.5, 48], wallLight, { cast: true, solid: true });
+  box("ga-clubhouse-roof", { width: 13.5, height: 0.55, depth: 10.5 }, [-108, 5.3, 48], roofDark, { cast: true });
+  box("ga-clubhouse-door", { width: 0.3, height: 3.2, depth: 5.5 }, [-101.95, 1.6, 48], doorDark);
+
+  // Remote parking stand (south-east): its own concrete slab and
+  // a taxi link that butts exactly against the runway's east edge
+  // and the slab's west edge (no overlaps — coplanar tops z-fight).
+  box("stand-taxi-link", { width: 27, height: 0.12, depth: 8 }, [21.5, 0.06, 94], asphalt);
+  box(
+    "stand-taxi-link-line",
+    { width: 25, height: 0.14, depth: 0.5 },
+    [21.5, 0.07, 94],
+    markingYellow,
+  );
+  box("remote-stand", { width: 46, height: 0.12, depth: 36 }, [58, 0.06, 94], concrete);
 
   // ---------- Simple trees for scale (cones + trunks) ----------
   const treeSpots: Array<[number, number]> = [
