@@ -2,7 +2,7 @@
  * Phase 10 — procedural audio (Web Audio API, no assets, no cost).
  *
  * Everything is synthesized: the engine is two detuned oscillators
- * through a lowpass filter, wind is filtered noise, and the event
+ * through a lowpass filter, and the event
  * sounds (takeoff whoosh, touchdown thump, crash, checkpoint blip,
  * mission-complete arpeggio) are short oscillator/noise envelopes.
  *
@@ -59,13 +59,6 @@ export function engineFreqFor(throttle: number, airspeed: number): number {
   return 46 + t * 64 + Math.min(Math.max(airspeed, 0), 45) * 0.35;
 }
 
-/** Wind loudness: a whisper on the ground roll, full rush airborne. */
-export function windGainFor(airspeed: number, grounded: boolean): number {
-  const v = Math.max(0, airspeed);
-  if (grounded) return Math.min(v / 50, 1) * 0.02;
-  return Math.min(Math.max((v - 8) / 55, 0), 1) * 0.14;
-}
-
 // --- Engine ------------------------------------------------------------
 
 interface FlightSoundState {
@@ -91,8 +84,9 @@ export class SoundEngine {
   private engineOscA: OscillatorNode | null = null;
   private engineOscB: OscillatorNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
-  private windGain: GainNode | null = null;
-  private windFilter: BiquadFilterNode | null = null;
+  // Kept for the one-shot stingers (takeoff/touchdown/crash
+  // bursts). The continuous wind layer was removed in 0.12.1 at
+  // Jeet's request — no wind sound in flight any more.
   private noiseBuffer: AudioBuffer | null = null;
   private prefs: AudioPrefs;
   private readonly contextFactory: () => AudioContext | null;
@@ -140,24 +134,11 @@ export class SoundEngine {
       this.engineOscA.start();
       this.engineOscB.start();
 
-      // Wind: looped white noise -> bandpass -> gain.
+      // Shared white-noise buffer for the one-shot stingers.
       const len = ctx.sampleRate * 2;
       this.noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
       const data = this.noiseBuffer.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-      const noise = ctx.createBufferSource();
-      noise.buffer = this.noiseBuffer;
-      noise.loop = true;
-      this.windFilter = ctx.createBiquadFilter();
-      this.windFilter.type = "bandpass";
-      this.windFilter.frequency.value = 480;
-      this.windFilter.Q.value = 0.55;
-      this.windGain = ctx.createGain();
-      this.windGain.gain.value = 0;
-      noise.connect(this.windFilter);
-      this.windFilter.connect(this.windGain);
-      this.windGain.connect(this.master);
-      noise.start();
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
   }
@@ -182,7 +163,7 @@ export class SoundEngine {
 
   /** Per-frame levels. `active` is false while paused (sounds hush). */
   update(state: FlightSoundState, active: boolean): void {
-    if (!this.ctx || !this.engineGain || !this.windGain) return;
+    if (!this.ctx || !this.engineGain) return;
     const t = this.ctx.currentTime;
     const engineTarget =
       active && !state.crashed ? engineGainFor(state.throttle) : 0;
@@ -192,11 +173,6 @@ export class SoundEngine {
       this.engineOscA.frequency.setTargetAtTime(f, t, 0.09);
       this.engineOscB.frequency.setTargetAtTime(f * 1.5 + 4, t, 0.09);
       this.engineFilter.frequency.setTargetAtTime(260 + state.throttle * 640, t, 0.09);
-    }
-    const windTarget = active ? windGainFor(state.airspeed, state.grounded) : 0;
-    this.windGain.gain.setTargetAtTime(windTarget, t, 0.09);
-    if (this.windFilter) {
-      this.windFilter.frequency.setTargetAtTime(340 + state.airspeed * 15, t, 0.09);
     }
   }
 

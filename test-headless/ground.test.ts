@@ -84,8 +84,8 @@ function pilotStep(
     const bearing =
       (Math.atan2(target.x - s.posX, -(target.z - s.posZ)) * 180) / Math.PI;
     const err = wrapDeg(bearing - s.headingDeg);
-    if (err > 4) keys.add("KeyD");
-    else if (err < -4) keys.add("KeyA");
+    if (err > 4) keys.add("KeyA"); // A = roll right since 0.12.1
+    else if (err < -4) keys.add("KeyD");
   }
   // Pitch toward the target vertical speed.
   if (!s.grounded || s.airspeed > 27) {
@@ -163,8 +163,8 @@ function headingStep(
   if (powerOn) keys.add("ShiftLeft");
   if (!s.grounded) {
     const err = wrapDeg(desiredHeadingDeg - s.headingDeg);
-    if (err > hdgDeadband) keys.add("KeyD");
-    else if (err < -hdgDeadband) keys.add("KeyA");
+    if (err > hdgDeadband) keys.add("KeyA");
+    else if (err < -hdgDeadband) keys.add("KeyD");
   }
   if (!s.grounded || s.airspeed > 27) {
     if (s.verticalSpeed < targetVS - vsDeadband) keys.add("KeyS");

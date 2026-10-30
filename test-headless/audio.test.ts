@@ -9,7 +9,6 @@ import {
   SoundEngine,
   engineFreqFor,
   engineGainFor,
-  windGainFor,
 } from "../src/game/audio";
 
 let failures = 0;
@@ -92,10 +91,8 @@ check("A1 engine idles quietly, full power is louder",
   engineGainFor(0) > 0 && engineGainFor(0) < engineGainFor(0.5) && engineGainFor(0.5) < engineGainFor(1));
 check("A2 engine pitch rises with throttle",
   engineFreqFor(0, 0) < engineFreqFor(1, 0) && engineFreqFor(1, 0) < engineFreqFor(1, 40));
-check("A3 no wind parked, full rush at speed airborne",
-  windGainFor(0, true) === 0 && windGainFor(100, false) === 0.14 && windGainFor(30, false) > 0);
-check("A4 ground-roll wind stays a whisper",
-  windGainFor(45, true) <= 0.02);
+// A3/A4 (wind level mapping) retired in 0.12.1: the wind layer
+// was removed from the game at Jeet's request.
 
 // --- B. Graph lifecycle with the fake context ---------------------------
 {

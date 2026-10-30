@@ -324,15 +324,18 @@ export class AircraftController {
       INPUT_RESPONSE,
       dt,
     );
+    // Direction swap (Jeet, 2026-10-30): A rolls RIGHT, D rolls
+    // LEFT — the reverse of the original mapping.
     this.rollInput = damp(
       this.rollInput,
-      (input.isDown("KeyA") ? 1 : 0) + (input.isDown("KeyD") ? -1 : 0),
+      (input.isDown("KeyD") ? 1 : 0) + (input.isDown("KeyA") ? -1 : 0),
       INPUT_RESPONSE,
       dt,
     );
+    // Direction swap (Jeet, 2026-10-30): Q yaws RIGHT, E yaws LEFT.
     this.yawInput = damp(
       this.yawInput,
-      (input.isDown("KeyQ") ? 1 : 0) + (input.isDown("KeyE") ? -1 : 0),
+      (input.isDown("KeyE") ? 1 : 0) + (input.isDown("KeyQ") ? -1 : 0),
       INPUT_RESPONSE,
       dt,
     );

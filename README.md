@@ -8,7 +8,7 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
-## Phase 12.1 — Find the next ring (current)
+## Phase 12.1 — Find the next ring
 
 Jeet played Checkpoint Flight live and reported that after
 clearing one ring he could not find the next. The guidance
@@ -45,6 +45,27 @@ still let it flash during ground contact transitions.
 The mission minimap (gold next / blue later / runway line /
 route, `MAP_EXTENT` 1,750) and the steering arrow already
 covered the map leg of this fix and are unchanged.
+
+## Patch 0.12.1 — Control directions swapped, wind sound removed (current)
+
+Two changes Jeet asked for directly (2026-10-30):
+
+- **A/D and Q/E directions swapped.** A now rolls RIGHT and D
+  rolls LEFT; Q yaws RIGHT and E yaws LEFT (the input mapping in
+  `AircraftController` flipped; the physics are unchanged). The
+  headless suites were updated to the new scheme — the physics
+  suite's direction check now asserts "A banks right / D banks
+  left", and the ground-test autopilot steers with the new keys.
+- **Wind sound removed.** The continuous filtered-noise wind
+  layer (which rose with airspeed in flight) is gone from
+  `audio.ts`. The engine hum and the event stingers (takeoff
+  whoosh, touchdown thump, crash, checkpoint, mission) are
+  unchanged — they only ever used the shared noise buffer for
+  short bursts, which stays.
+
+Verify: all headless suites pass under the new control scheme;
+the audio suite's wind-mapping checks were retired with the
+feature.
 
 ## Phase 12 — Bigger world, bigger airport, mouse look
 
@@ -152,7 +173,7 @@ the flight model, controls or missions.
 
 - **Procedural sound** (`src/game/audio.ts`, Web Audio — no audio
   files, no paid APIs): engine hum that follows throttle and
-  airspeed, wind rush that builds with speed while airborne, a
+  airspeed (the wind rush layer was removed in 0.12.1), a
   liftoff whoosh, touchdown thumps (a hard landing sounds lower
   and louder), a crash burst, a checkpoint blip and a
   mission-complete arpeggio.
@@ -489,8 +510,8 @@ rendering and UI.
 | Key | Action |
 | --- | --- |
 | **W / S** | Pitch — **W nose down, S nose up** (yoke style: push = descend, pull = climb) |
-| **A / D** | Roll — bank left / bank right |
-| **Q / E** | Yaw — nose left / nose right |
+| **A / D** | Roll — bank right / bank left (swapped in 0.12.1) |
+| **Q / E** | Yaw — nose right / nose left (swapped in 0.12.1) |
 | **Shift** | Throttle up (hold — release and power falls back to zero) |
 | **Space** | Fast throttle cut (hold) |
 | **C** | Cycle camera: Chase → Chase far → Cockpit |
@@ -522,9 +543,9 @@ Click the page once so it has focus, then:
    throttle back down and slow.
 2. **Pitch** — at speed, hold **S** to raise the nose and climb; hold
    **W** to push the nose down and descend.
-3. **Roll** — once airborne, hold **A** to bank left / **D** to bank
-   right; the turn follows the bank.
-4. **Yaw** — tap/hold **Q** or **E** to swing the nose left/right
+3. **Roll** — once airborne, hold **A** to bank right / **D** to bank
+   left; the turn follows the bank.
+4. **Yaw** — tap/hold **Q** or **E** to swing the nose right/left
    (works on the ground too, like steering).
 5. **Camera** — press **C** repeatedly to cycle Chase → Chase far →
    Cockpit → Chase; the HUD camera label follows.

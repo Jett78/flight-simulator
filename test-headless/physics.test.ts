@@ -90,7 +90,7 @@ function makeSim() {
   runUntil(["ShiftLeft"], () => controller.getState().altitude > 45 && controller.getState().airspeed >= 32, 40); // settle into cruise first
   run(1, ["ShiftLeft"]);
   const h0 = controller.getState().headingDeg;
-  run(0.45, ["ShiftLeft", "KeyD"]); // bank right (~25-30 degrees)
+  run(0.45, ["ShiftLeft", "KeyA"]); // bank right (~25-30 degrees; A = roll right since 0.12.1)
   const banked = controller.getState();
   run(6, ["ShiftLeft"]); // let the turn develop under lift + stability
   const h1 = controller.getState().headingDeg;
@@ -117,7 +117,7 @@ function makeSim() {
   runUntil(["ShiftLeft"], () => controller.getState().altitude >= 40 && controller.getState().airspeed >= 32, 40);
   run(1, ["ShiftLeft"]);
   const h0 = controller.getState().headingDeg;
-  run(0.15, ["ShiftLeft", "KeyD"]); // a tap, not a hold
+  run(0.15, ["ShiftLeft", "KeyA"]); // a tap, not a hold
   run(5, ["ShiftLeft"]);
   const h1 = controller.getState().headingDeg;
   let dh = h1 - h0;
@@ -138,7 +138,7 @@ function makeSim() {
   runUntil(["ShiftLeft"], () => controller.getState().altitude >= 55 && controller.getState().airspeed >= 32, 45);
   run(1.5, ["ShiftLeft"]);
   const before = controller.getState();
-  run(0.7, ["ShiftLeft", "KeyD"]); // build a moderate bank
+  run(0.7, ["ShiftLeft", "KeyA"]); // build a moderate bank
   run(6, ["ShiftLeft"]); // hands-off turn
   const after = controller.getState();
   let dh = after.headingDeg - before.headingDeg;
@@ -167,7 +167,7 @@ function makeSim() {
   runUntil(["ShiftLeft", "KeyS"], () => controller.getState().verticalSpeed >= -2, 6);
   run(0.3, ["ShiftLeft"]);
   const before = controller.getState();
-  run(0.7, ["ShiftLeft", "KeyD"]);
+  run(0.7, ["ShiftLeft", "KeyA"]);
   run(6, ["ShiftLeft"]);
   const after = controller.getState();
   let dh = after.headingDeg - before.headingDeg;
@@ -354,7 +354,7 @@ function makeSim() {
   d.run(0.6, ["ShiftLeft", "KeyD"]);
   d.run(5, ["ShiftLeft"]);
   const dhD = wrap(d.controller.getState().headingDeg - hd0);
-  check("A banks left / D banks right", dhA < -5 && dhD > 5, `A: heading ${dhA.toFixed(0)}°, D: heading ${dhD.toFixed(0)}°`);
+  check("A banks right / D banks left (0.12.1 swap)", dhA > 5 && dhD < -5, `A: heading ${dhA.toFixed(0)}°, D: heading ${dhD.toFixed(0)}°`);
 }
 
 console.log(failures === 0 ? "\nALL PHYSICS TESTS PASSED" : `\n${failures} TEST(S) FAILED`);

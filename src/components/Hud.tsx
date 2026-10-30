@@ -650,10 +650,10 @@ export function Hud({
                 <strong>W / S</strong> pitch — W nose down · S nose up
               </li>
               <li>
-                <strong>A / D</strong> roll — bank left / right
+                <strong>A / D</strong> roll — bank right / left
               </li>
               <li>
-                <strong>Q / E</strong> yaw — left / right
+                <strong>Q / E</strong> yaw — right / left
               </li>
               <li>
                 <strong>Shift (hold) / Space</strong> throttle — hold Shift for
