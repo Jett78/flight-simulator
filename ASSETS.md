@@ -33,22 +33,27 @@ external assets, no paid services, no runtime API calls.
 
 ## Aircraft model — `public/models/boeing-747.gltf` (Boeing 747)
 
-- **What:** "Boeing 747" — the four-engine jumbo jet with the
-  upper-deck hump, flown by the commercial-jet aircraft
-  (config id `skyliner-200`). ~155 KB, vertex-coloured materials,
-  no textures.
+- **What:** "Airplane" — a twin-engine commercial airliner with
+  a full passenger-window row, cockpit glass and a blue/white
+  livery, flown by the commercial-jet aircraft (config id
+  `skyliner-200`). ~259 KB, vertex-coloured materials, no
+  textures.
 - **Source:** Poly Pizza, model page
-  https://poly.pizza/m/49CLof4tP2V (file served from
+  https://poly.pizza/m/a3XrQkLNna9 (file served from
   static.poly.pizza).
-- **Copyright / license:** © **Miha Lunar**. Licensed under
-  **CC-BY 3.0** — free to use with attribution (this file).
+- **Copyright / license:** © **Poly by Google**. Licensed under
+  **Creative Commons Attribution (CC-BY)**, as shown on the
+  model page — free to use with attribution (this file).
 - **Format note:** same GLB → embedded-text glTF conversion as
   the Cesium Air above; the original binary is kept outside the
-  repo. The file's nose points ~16° off its −Z axis, so the
-  config sets `modelYawDeg: -16` and the fit turns it to the
-  sim's −Z forward (verified by an in-game yaw A/B with the
-  tail fin nearest the chase camera; an earlier 164° value
-  rendered the jet backwards and was corrected).
+  repo. The file's nose faces +Z in Babylon space, so the
+  config sets `modelYawDeg: 180` and the fit turns it to the
+  sim's −Z forward (verified by an in-game yaw sweep: 180° =
+  symmetric rear view, tail nearest the chase camera; the
+  fuselage top line measures level, so no pitch correction).
+- **History:** this model replaced a "Boeing 747" by Miha Lunar
+  (CC-BY 3.0, poly.pizza/m/49CLof4tP2V) in v0.20.0 — that file
+  is authored in a ~26° nose-down pose and has no windows.
 - **Changes made:** none to the model itself; the loader's
   measured fit scales it to the config's 28.6 m length and puts
   its underside on the gear contact.

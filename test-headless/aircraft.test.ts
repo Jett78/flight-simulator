@@ -438,7 +438,7 @@ const step = (
     "M1 model sources resolve per config (all three real glTF since Phase 5)",
     c.kind === "gltf" && j.kind === "gltf" && f.kind === "gltf" &&
       getAircraftConfig("skyliner-200").modelPath === "/models/boeing-747.gltf" &&
-      getAircraftConfig("skyliner-200").modelYawDeg === -16 &&
+      getAircraftConfig("skyliner-200").modelYawDeg === 180 &&
       getAircraftConfig("falcon-f1").modelPath === "/models/fighter-jet.gltf" &&
       getAircraftConfig("falcon-f1").modelYawDeg === 180,
     `cesium=${c.kind} · skyliner=${j.kind} · falcon=${f.kind}`,

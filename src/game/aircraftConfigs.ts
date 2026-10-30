@@ -235,22 +235,20 @@ registerAircraft({
 registerAircraft({
   id: "skyliner-200",
   name: "Boeing 747",
-  description: "The original jumbo jet — four engines and the famous upper-deck hump. Heavy, smooth and fast once it winds up: give it runway and time, and it rewards patience.",
+  description: "The flagship commercial jet. Heavy, smooth and fast once it winds up: give it runway and time, and it rewards patience.",
   category: "commercial-jet",
   modelId: "skyliner-200",
-  // Real model (Phase 5): "Boeing 747" by Miha Lunar via Poly
-  // Pizza, CC-BY 3.0 — see ASSETS.md. The file's nose points
-  // ~16° off its -Z axis (measured from the geometry: fin
-  // centroid to nose tip). The in-game correction is -16°:
-  // an earlier 164° value rendered the jet BACKWARDS (nose
-  // toward the chase camera) — the dead-ahead view was
-  // misread as a rear view during verification. -16° was
-  // confirmed by an in-game yaw A/B: tail fin and stabilizer
-  // large and nearest the camera, nose away down the runway.
-  // The procedural airliner remains the documented fallback
-  // shape.
+  // Real model via Poly Pizza, CC-BY 3.0 — see ASSETS.md.
+  // (Replaced the earlier Miha Lunar 747 in v0.20.0: that file
+  // is authored in a ~26° nose-down pose and has no windows;
+  // Jeet asked for a better-looking model flown straight.)
+  // This model's nose faces +Z in Babylon space, so the fit
+  // needs a plain 180° flip — confirmed by an in-game yaw
+  // sweep (180° = symmetric rear view, tail nearest camera)
+  // and a geometry check: the fuselage top line is level
+  // (0.0° across the mid-body), so no pitch correction.
   modelPath: "/models/boeing-747.gltf",
-  modelYawDeg: -16,
+  modelYawDeg: 180,
   proceduralModel: "airliner",
   mass: 19000,
   thrust: 128000,
