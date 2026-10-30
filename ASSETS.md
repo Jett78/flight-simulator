@@ -107,10 +107,13 @@ Two helicopters parked on the apron beside the taxiway
 glTF conversion as the aircraft):
 
 - **`public/models/heli-grey.gltf`** — "Helicopter" by
-  **Quaternius**, via Poly Pizza
-  https://poly.pizza/m/eb7b31pjGtQ. **CC0** (public domain;
-  credited here as a courtesy). White/grey utility helicopter
-  with blue cockpit glass, parked at the apron's south end.
+  **jeremy**, via Poly Pizza
+  https://poly.pizza/m/eb7b31pjGtQ. Licensed under
+  **Creative Commons Attribution (CC-BY)**, as shown on the
+  model page (credit corrected 2026-10-30 — an earlier check
+  had misread the page as a different author/license).
+  White/grey utility helicopter with blue cockpit glass,
+  parked at the apron's south end.
 - **`public/models/heli-red.gltf`** — "Helicopter" by
   **Poly by Google**, via Poly Pizza
   https://poly.pizza/m/cTzINMr0WdS. Licensed under
