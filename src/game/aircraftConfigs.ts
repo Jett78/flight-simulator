@@ -47,8 +47,24 @@ export interface AircraftConfig {
   category: AircraftCategory;
   /** Visual identifier the model loader maps to an asset. */
   modelId: string;
-  /** Asset path when a real model exists (only the default's does, for now). */
+  /**
+   * Asset path of a real glTF/GLB model, when one is supplied
+   * (Phase 4). Takes precedence over proceduralModel. To give an
+   * aircraft a real model: drop the file under public/models/,
+   * set this path, and — if the automatic fit puts its nose
+   * backwards (the fit reads propellers; prop-less models may
+   * need it) — set modelYawDeg to 180. See ASSETS.md.
+   */
   modelPath?: string;
+  /**
+   * Built-in procedural model to construct when no glTF is
+   * supplied (Phase 4): "airliner" is the primitives-built
+   * passenger jet, "fighter" the delta-wing jet. Both are
+   * normalized to this config's scale and gear contact.
+   */
+  proceduralModel?: "airliner" | "fighter";
+  /** Extra yaw (degrees) applied to a supplied GLB's fit. */
+  modelYawDeg?: number;
 
   // --- Airframe / engine (physics: force integration) ---
   /** kg. Heavier = statelier acceleration at the same thrust. */
@@ -202,6 +218,7 @@ registerAircraft({
   description: "Commercial passenger jet. Heavy, smooth and fast once it winds up — give it runway and time, and it rewards patience.",
   category: "commercial-jet",
   modelId: "skyliner-200",
+  proceduralModel: "airliner",
   mass: 19000,
   thrust: 128000,
   throttleResponse: 0.45,
@@ -242,6 +259,7 @@ registerAircraft({
   description: "Fighter jet. Explosive thrust, razor controls, happiest at angles of attack that would terrify the SkyLiner.",
   category: "fighter",
   modelId: "falcon-f1",
+  proceduralModel: "fighter",
   mass: 5200,
   thrust: 54000,
   throttleResponse: 1.35,

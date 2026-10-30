@@ -1,4 +1,5 @@
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import type { AircraftConfig } from "./aircraftConfigs";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
@@ -67,6 +68,48 @@ function toRootSpace(p: Vector3, aircraftRoot: TransformNode): Vector3 {
   return Vector3.TransformCoordinates(p, inv);
 }
 
+/**
+ * Multi-aircraft Phase 4: where an aircraft's visuals come from.
+ * A supplied glTF wins; otherwise the config's built-in
+ * procedural model; otherwise the generic placeholder (which is
+ * also the in-flight fallback while a glTF streams in, and the
+ * permanent fallback if it fails). One resolver, used by both
+ * FlightScene and the tests, so they can never disagree.
+ */
+export type AircraftModelSource =
+  | { kind: "gltf"; path: string }
+  | { kind: "procedural"; builder: "airliner" | "fighter" }
+  | { kind: "placeholder" };
+
+export function modelSourceFor(cfg: AircraftConfig): AircraftModelSource {
+  if (cfg.modelPath) return { kind: "gltf", path: cfg.modelPath };
+  if (cfg.proceduralModel) return { kind: "procedural", builder: cfg.proceduralModel };
+  return { kind: "placeholder" };
+}
+
+/**
+ * Fit a procedurally built model under a container, the same
+ * normalization the GLB path performs: uniform scale so the
+ * airframe is targetLength long, centred horizontally on the
+ * aircraft root, underside resting exactly on the gear contact
+ * (root −2.25 m). Procedural builders author in the game's
+ * convention already (nose −Z), so no yaw correction is needed.
+ */
+export function normalizeProceduralModel(
+  container: TransformNode,
+  aircraftRoot: TransformNode,
+  targetLength: number,
+): void {
+  let bounds = boundsInRootSpace(container, aircraftRoot);
+  const length = bounds.max.z - bounds.min.z;
+  if (!(length > 0.1)) return;
+  container.scaling.setAll(targetLength / length);
+  bounds = boundsInRootSpace(container, aircraftRoot);
+  const cx = (bounds.min.x + bounds.max.x) / 2;
+  const cz = (bounds.min.z + bounds.max.z) / 2;
+  container.position.set(-cx, -GEAR_DROP - bounds.min.y, -cz);
+}
+
 export async function loadAircraftModel(
   scene: Scene,
   aircraftRoot: TransformNode,
@@ -74,6 +117,8 @@ export async function loadAircraftModel(
   url: string = MODEL_URL,
   /** Multi-aircraft Phase 1: config scale — fitted length multiplier (1 = the stock 11 m). */
   scaleFactor: number = 1,
+  /** Phase 4: extra yaw (degrees) for supplied models whose nose the fit reads backwards. */
+  extraYawDeg: number = 0,
 ): Promise<boolean> {
   // Snapshot the placeholder meshes before the model exists.
   const placeholders = aircraftRoot.getChildMeshes(false);
@@ -150,7 +195,7 @@ export async function loadAircraftModel(
     if (!(length > 0.1)) throw new Error("Could not measure the model");
 
     // --- Fit: yaw the nose to -Z, scale to target length ---
-    container.rotation.y = Math.atan2(noseDir.x, -noseDir.z);
+    container.rotation.y = Math.atan2(noseDir.x, -noseDir.z) + (extraYawDeg * Math.PI) / 180;
     container.scaling.setAll((TARGET_LENGTH * scaleFactor) / length);
 
     // Re-measure with yaw+scale applied, then centre horizontally

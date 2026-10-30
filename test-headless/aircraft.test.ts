@@ -32,6 +32,10 @@ import {
 } from "../src/game/aircraftConfigs";
 import type { InputManager as InputManagerType } from "../src/game/InputManager";
 import { createGroundSampler } from "../src/game/runway";
+import { modelSourceFor, normalizeProceduralModel } from "../src/game/aircraftModel";
+import { createAirplane } from "../src/game/createAirplane";
+import { createFighterJet } from "../src/game/createFighter";
+import { TransformNode as TN } from "@babylonjs/core/Meshes/transformNode";
 
 const DT = 1 / 120;
 let failures = 0;
@@ -416,6 +420,60 @@ const step = (
       `H5 ${cfg.id} lands on the runway without crashing (approach ${approach.toFixed(0)} m/s)`,
       verdict !== null && verdict !== "off-runway" && !end.crashed,
       verdict === null ? `no touchdown (crashed=${end.crashed})` : `verdict: ${verdict}`,
+    );
+    scene.dispose();
+    engine.dispose();
+  }
+}
+
+
+// ---------- M. Phase 4 models ----------
+
+{
+  const src = (id: string) => modelSourceFor(getAircraftConfig(id));
+  const c = src("cesium-air");
+  const j = src("skyliner-200");
+  const f = src("falcon-f1");
+  check(
+    "M1 model sources resolve per config (gltf / airliner / fighter)",
+    c.kind === "gltf" && j.kind === "procedural" && j.builder === "airliner" &&
+      f.kind === "procedural" && f.builder === "fighter",
+    `cesium=${c.kind} · skyliner=${j.kind}${j.kind === "procedural" ? ":" + j.builder : ""} · falcon=${f.kind}${f.kind === "procedural" ? ":" + f.builder : ""}`,
+  );
+}
+
+{
+  // Build each procedural model, normalize it exactly as
+  // FlightScene does, and measure: fitted length, gear contact,
+  // centring, and nose direction (named parts must sit forward).
+  const cases = [
+    { id: "skyliner-200", build: createAirplane, noseMesh: "nose" },
+    { id: "falcon-f1", build: createFighterJet, noseMesh: "fighter-nose" },
+  ] as const;
+  for (const kase of cases) {
+    const cfg = getAircraftConfig(kase.id);
+    const engine = new NullEngine();
+    const scene = new Scene(engine);
+    const root = new TN("airplane", scene);
+    const container = new TN("aircraft-model", scene);
+    container.parent = root;
+    const inner = kase.build(scene);
+    inner.parent = container;
+    normalizeProceduralModel(container, root, 11 * cfg.scale);
+    root.computeWorldMatrix(true);
+    const { min, max } = root.getHierarchyBoundingVectors(true);
+    const length = max.z - min.z;
+    const target = 11 * cfg.scale;
+    const nose = scene.getMeshByName(kase.noseMesh);
+    const noseZ = nose ? nose.getAbsolutePosition().z : 0;
+    check(
+      `M2 ${kase.id} model fits: length ≈ ${target.toFixed(1)} m, gear at −2.25, nose forward`,
+      Math.abs(length - target) / target < 0.06 &&
+        Math.abs(min.y + 2.25) < 0.05 &&
+        Math.abs((min.x + max.x) / 2) < 0.1 &&
+        Math.abs((min.z + max.z) / 2) < 0.1 &&
+        noseZ < -target * 0.25,
+      `len ${length.toFixed(1)} m · underside ${min.y.toFixed(2)} · nose z ${noseZ.toFixed(1)}`,
     );
     scene.dispose();
     engine.dispose();

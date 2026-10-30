@@ -5,7 +5,7 @@ import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { Scene } from "@babylonjs/core/scene";
 import { AircraftController, type FlightState } from "./AircraftController";
@@ -14,7 +14,8 @@ import {
   type CheckpointMarkerHandle,
 } from "./checkpointMarkers";
 import type { CheckpointVisual } from "./missions";
-import { loadAircraftModel } from "./aircraftModel";
+import { loadAircraftModel, modelSourceFor, normalizeProceduralModel } from "./aircraftModel";
+import { createFighterJet } from "./createFighter";
 import {
   aircraftVariantById,
   loadAircraftVariantId,
@@ -155,6 +156,9 @@ export class FlightScene {
    */
   readonly aircraftConfig: AircraftConfig;
 
+  /** Phase 4: which visual the aircraft root is wearing. */
+  private modelKind: "gltf" | "procedural" | "placeholder" = "placeholder";
+
   /** Phase 14: original paint colours, captured before any tint. */
   private readonly paintOriginals = new Map<number, Color3>();
 
@@ -261,6 +265,7 @@ export class FlightScene {
         state: () => this.controller.getState(),
         reset: () => this.resetAircraft(),
         controller: this.controller,
+        model: () => ({ kind: this.modelKind, id: this.aircraftConfig.id }),
       };
     }
 
@@ -604,6 +609,31 @@ export class FlightScene {
     this.obstacleField = new ObstacleField([...airport.obstacles, ...island.obstacles]);
     for (const mesh of airport.shadowCasters) shadows.addShadowCaster(mesh);
 
+    // Multi-aircraft Phase 4: the visual comes from the active
+    // config — a supplied glTF, a built-in procedural model, or
+    // the generic placeholder (see modelSourceFor / ASSETS.md).
+    const modelSource = modelSourceFor(this.aircraftConfig);
+    if (modelSource.kind === "procedural") {
+      // Built synchronously from primitives: nothing streams,
+      // so the aircraft is simply there — no hide/reveal dance,
+      // no morph. Normalized to the config's length and gear
+      // contact exactly like the GLB fit.
+      const airplane = new TransformNode("airplane", this.scene);
+      const container = new TransformNode("aircraft-model", this.scene);
+      container.parent = airplane;
+      const inner =
+        modelSource.builder === "fighter" ? createFighterJet(this.scene) : createAirplane(this.scene);
+      inner.parent = container;
+      normalizeProceduralModel(container, airplane, 11 * this.aircraftConfig.scale);
+      airplane.position.copyFrom(AIRCRAFT_START);
+      airplane.getChildMeshes().forEach((mesh) => {
+        mesh.receiveShadows = true;
+        shadows.addShadowCaster(mesh);
+      });
+      this.modelKind = "procedural";
+      return airplane;
+    }
+
     const airplane = createAirplane(this.scene);
     airplane.position.copyFrom(AIRCRAFT_START);
     airplane.getChildMeshes().forEach((mesh) => shadows.addShadowCaster(mesh));
@@ -630,9 +660,11 @@ export class FlightScene {
       (mesh) => shadows.addShadowCaster(mesh),
       this.aircraftConfig.modelPath,
       this.aircraftConfig.scale,
+      this.aircraftConfig.modelYawDeg ?? 0,
     ).then(
       (loaded) => {
         clearTimeout(revealTimer);
+        this.modelKind = loaded ? "gltf" : "placeholder";
         if (loaded) this.applyAircraftPaint();
         if (loaded) {
           const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
