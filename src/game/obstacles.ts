@@ -17,6 +17,14 @@
 
 export const AIRCRAFT_RADIUS = 4;
 export const OBSTACLE_CRASH_SPEED = 10; // m/s (~36 km/h)
+/**
+ * Extra clearance the contact solver leaves between the aircraft
+ * sphere and a surface (0.13.2). Resting exactly ON the surface
+ * meant every step re-penetrated and snapped back — a visible
+ * grind/jitter while pressing against a building. A small skin
+ * makes contact stable: touch once, stay put, slide smoothly.
+ */
+export const CONTACT_SKIN = 0.05;
 
 export interface ObstacleBox {
   kind: "box";
@@ -114,8 +122,16 @@ export class ObstacleField {
       if (y - r >= o.topY || y + r <= o.baseY) continue;
       if (o.kind === "box") {
         // Sphere (projected to a circle) vs box, expanded by r.
-        const dx = x < o.minX ? o.minX - x : x > o.maxX ? x - o.maxX : 0;
-        const dz = z < o.minZ ? o.minZ - z : z > o.maxZ ? z - o.maxZ : 0;
+        // Offset from the box's closest point TO the centre — one
+        // consistent sign convention on every side. (Pre-0.13.2 the
+        // maxX/maxZ sides computed the offset with the opposite
+        // sign, so the "push-out" shoved the aircraft INTO the wall
+        // on those faces until its centre crossed inside and the
+        // inside-branch ejected it — a suck-in/eject cycle that
+        // felt like lag/jitter when pressing a building from the
+        // east or south.)
+        const dx = x - Math.max(o.minX, Math.min(x, o.maxX));
+        const dz = z - Math.max(o.minZ, Math.min(z, o.maxZ));
         if (dx === 0 && dz === 0) {
           // Centre inside the box: push out along the shallowest face.
           const left = x - o.minX + r;
@@ -139,8 +155,8 @@ export class ObstacleField {
             const hit: ObstacleHit = {
               name: o.name,
               label: obstacleLabel(o.name),
-              pushX: -dx * inv,
-              pushZ: -dz * inv,
+              pushX: dx * inv,
+              pushZ: dz * inv,
               depth: r - dist,
             };
             if (!best || hit.depth > best.depth) best = hit;

@@ -46,7 +46,50 @@ The mission minimap (gold next / blue later / runway line /
 route, `MAP_EXTENT` 1,750) and the steering arrow already
 covered the map leg of this fix and are unchanged.
 
-## Patch 0.13.1 — Runway/apron flicker fixed (current)
+## Patch 0.13.2 — Smooth building contact: the "lag" fix (current)
+
+Jeet: slowly running the plane into a building didn't crash
+(correct) but felt like severe lag — the plane ground, jittered
+and wandered along the wall instead of stopping cleanly. Three
+stacked causes, all fixed:
+
+1. **A sign bug in the box collision query** (`obstacles.ts`,
+   present since Phase 13): for approaches from the +X/+Z sides
+   of a box, the closest-point offset was computed with the
+   opposite sign, so the "push-out" shoved the aircraft INTO the
+   wall. Each step pushed it deeper until its centre crossed
+   inside and the inside-branch ejected it — a suck-in/eject
+   cycle at 120 Hz. (West/north faces had the correct sign,
+   which is why earlier checks passed.) The offset is now
+   computed from the clamped closest point with one convention
+   on all sides.
+2. **Velocity halving on contact** (old controller model): every
+   contact step multiplied velocity by 0.5 — at 120 Hz that
+   annihilated speed even when merely GRAZING a wall (taxiing
+   parallel inside the 4 m sphere), so the plane felt stuck in
+   mud near buildings. Replaced by true sliding contact:
+   velocity is projected onto the surface plane (into-wall
+   component removed, along-wall component kept whole).
+3. **No contact stability**: penetration was resolved only after
+   integrating, resting exactly on the surface, so a held press
+   re-penetrated and snapped back every step. The solver now
+   also depenetrates at step start (rotation-induced overlap),
+   iterates up to 3 passes (corners settle instead of
+   flip-flopping), and engages contact at a 0.05 m skin
+   (`CONTACT_SKIN`) so a held press rests at one constant
+   position. Crash detection now uses the INTO-SURFACE speed
+   component, so sliding fast along a wall is fine but sliding
+   into a perpendicular wall still crashes (and names it).
+
+Verification: new headless scenarios C1–C5 (slide at full
+tangential speed, held press with position range 0.000 m over
+1.5 s, corner pocket, slow mid-air block, fast slide into a
+cross wall) join B1–B5; all suites pass. In the browser, the
+identical press-and-hold drive that previously wandered
+(posX range 3.00 m, posZ range 35.79 m over 14 s against
+hangar A) now holds posX range 0.00 m / posZ range 0.36 m.
+
+## Patch 0.13.1 — Runway/apron flicker fixed
 
 Jeet spotted flickering black patches on the ground in front of
 the hangars. Cause: classic z-fighting — the taxiway slab

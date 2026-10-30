@@ -2,7 +2,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { InputManager } from "./InputManager";
-import { AIRCRAFT_RADIUS, OBSTACLE_CRASH_SPEED, type ObstacleField } from "./obstacles";
+import { AIRCRAFT_RADIUS, CONTACT_SKIN, OBSTACLE_CRASH_SPEED, type ObstacleField } from "./obstacles";
 
 /**
  * Simplified, semi-realistic flight model (Phase 4).
@@ -459,6 +459,13 @@ export class AircraftController {
     const newSpeed = this.velocity.length();
     if (newSpeed > MAX_SPEED) this.velocity.scaleInPlace(MAX_SPEED / newSpeed);
 
+    // ---------- Obstacles: depenetration (0.13.2) ----------
+    // Rotation since the last step (yawing while parked against a
+    // wall, ground attitude clamps) can swing the sphere into a
+    // surface without any translation. Clear that overlap BEFORE
+    // integrating so the step never starts inside a building.
+    this.resolveObstacles(false);
+
     // ---------- Position ----------
     this.velocity.scaleToRef(dt, this._tmp);
     node.position.addInPlace(this._tmp);
@@ -494,33 +501,69 @@ export class AircraftController {
       if (this.velocity.y > 0) this.velocity.y = 0;
     }
 
-    // ---------- Obstacles (Phase 13) ----------
-    // Buildings and trees are solid. A fast hit crashes; a slow
-    // one pushes the aircraft back out and kills the velocity
-    // into the surface, so you can bump a hangar while taxiing
-    // but never drive through it.
-    if (this.obstacles && !this.crashed) {
-      const hit = this.obstacles.query(node.position.x, node.position.y, node.position.z, AIRCRAFT_RADIUS);
-      if (hit) {
-        node.position.x += hit.pushX * hit.depth;
-        node.position.z += hit.pushZ * hit.depth;
-        const impactSpeed = this.velocity.length();
-        if (impactSpeed > OBSTACLE_CRASH_SPEED) {
-          this.registerCrash(`Crashed into ${hit.label}`);
-          return;
-        }
-        const vn = this.velocity.x * hit.pushX + this.velocity.z * hit.pushZ;
-        if (vn < 0) {
-          this.velocity.x -= vn * hit.pushX;
-          this.velocity.z -= vn * hit.pushZ;
-        }
-        this.velocity.x *= 0.5;
-        this.velocity.z *= 0.5;
-      }
-    }
+    // ---------- Obstacles (Phase 13, contact model 0.13.2) ----------
+    if (this.resolveObstacles(true)) return; // crashed into something fast
 
     // ---------- Attitude ----------
     this.applyAttitude(dt, wasGrounded, speed, stallFactor, alphaDeg);
+  }
+
+  /**
+   * Solid-obstacle contact (Phase 13; smooth-contact model 0.13.2).
+   *
+   * Resolves sphere-vs-obstacle penetration iteratively (up to 3
+   * passes, so corners where two faces meet settle instead of
+   * flip-flopping between them). The query radius includes
+   * CONTACT_SKIN, so contact engages a hair before the surface:
+   * each pass pushes the aircraft back out to that skin distance
+   * and projects the velocity onto the surface plane — the
+   * into-wall component is removed, the along-wall component is
+   * kept whole, so the aircraft SLIDES along buildings instead of
+   * grinding, and a held press sits at one constant position.
+   *
+   * The pre-0.13.2 model also halved the whole velocity on every
+   * contact step (×0.5 at 120 Hz): while merely GRAZING a wall —
+   * taxiing parallel within the 4 m sphere — the aircraft was
+   * permanently in "contact" and its speed was annihilated every
+   * step, which felt like severe lag, and the repeated
+   * penetrate→snap-back cycle made pressing into a wall jitter
+   * and wander instead of settling.
+   *
+   * With checkCrash, a hit whose INTO-SURFACE speed exceeds
+   * OBSTACLE_CRASH_SPEED registers the crash (position is still
+   * pushed out, so the wreck rests outside the wall). The crash
+   * test uses the into-surface component, not total speed:
+   * sliding fast ALONG a wall is not an impact — only the
+   * velocity driving INTO it counts. Every pass checks, so
+   * sliding along one wall into a perpendicular one crashes
+   * against the second. Returns true iff crashed.
+   */
+  private resolveObstacles(checkCrash: boolean): boolean {
+    if (!this.obstacles || this.crashed) return false;
+    const node = this.aircraft;
+    let crashedNow = false;
+    for (let i = 0; i < 3; i++) {
+      const hit = this.obstacles.query(
+        node.position.x,
+        node.position.y,
+        node.position.z,
+        AIRCRAFT_RADIUS + CONTACT_SKIN,
+      );
+      if (!hit) break;
+      const vn = this.velocity.x * hit.pushX + this.velocity.z * hit.pushZ;
+      if (checkCrash && -vn > OBSTACLE_CRASH_SPEED) {
+        this.registerCrash(`Crashed into ${hit.label}`);
+        crashedNow = true;
+      }
+      node.position.x += hit.pushX * hit.depth;
+      node.position.z += hit.pushZ * hit.depth;
+      if (vn < 0) {
+        this.velocity.x -= vn * hit.pushX;
+        this.velocity.z -= vn * hit.pushZ;
+      }
+      if (crashedNow) break;
+    }
+    return crashedNow;
   }
 
   private applyAttitude(

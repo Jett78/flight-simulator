@@ -168,5 +168,112 @@ function drive(
   slow.engine.dispose();
 }
 
+// ---------- C. Smooth contact (0.13.2) ----------
+// The pre-fix model halved velocity on every contact step and
+// resolved penetration only after integrating: pressing into a
+// building jittered/wandered and grazing a wall felt like lag.
+// These pin the new model: slide whole, settle still, corners
+// stable, mid-air blocks, fast slide into a second wall crashes.
+function pinFor(
+  sim: ReturnType<typeof makeSim>,
+  velocity: Vector3,
+  seconds: number,
+  record?: (x: number, z: number) => void,
+): void {
+  const steps = Math.round(seconds / DT);
+  for (let i = 0; i < steps; i++) {
+    sim.controller.velocity.copyFrom(velocity);
+    sim.controller.step(DT, sim.input as unknown as InputManager);
+    record?.(sim.node.position.x, sim.node.position.z);
+  }
+}
+const range = (a: number[]) => Math.max(...a) - Math.min(...a);
+
+{
+  // Diagonal into a wall: blocked on x, slides the full length on z.
+  const sim = makeSim([HANGAR], new Vector3(-45, 2.41, -16));
+  pinFor(sim, new Vector3(-5, 0, -5), 2);
+  const p = sim.node.position;
+  check(
+    "C1 diagonal hit slides along the wall at full tangential speed",
+    !sim.controller.getState().crashed && p.x > -53.3 && p.x < -52.6 && p.z <= -24,
+    `ended at (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) — face rest x=-52.95, slid from z=-16`,
+  );
+  sim.scene.dispose();
+  sim.engine.dispose();
+}
+{
+  // Head-on press, held: position must be DEAD still (no jitter).
+  const sim = makeSim([HANGAR], new Vector3(-45, 2.41, -22));
+  pinFor(sim, new Vector3(-5, 0, 0), 2.5);
+  const xs: number[] = [];
+  const zs: number[] = [];
+  pinFor(sim, new Vector3(-5, 0, 0), 1.5, (x, z) => {
+    xs.push(x);
+    zs.push(z);
+  });
+  check(
+    "C2 held press is stable — no grind jitter",
+    !sim.controller.getState().crashed && range(xs) < 0.02 && range(zs) < 0.02,
+    `x range ${range(xs).toFixed(3)} m, z range ${range(zs).toFixed(3)} m over 1.5 s pressed`,
+  );
+  sim.scene.dispose();
+  sim.engine.dispose();
+}
+{
+  // Inside corner of two boxes: settle in the pocket, no flip-flop.
+  const A: Obstacle = { kind: "box", name: "hangar-a", minX: -83, maxX: -57, minZ: -32, maxZ: 8, baseY: 0, topY: 10 };
+  const B: Obstacle = { kind: "box", name: "office-block", minX: -57, maxX: -37, minZ: -32, maxZ: -12, baseY: 0, topY: 10 };
+  const sim = makeSim([A, B], new Vector3(-45, 2.41, 2));
+  pinFor(sim, new Vector3(-4, 0, -4), 3);
+  const xs: number[] = [];
+  const zs: number[] = [];
+  pinFor(sim, new Vector3(-4, 0, -4), 1, (x, z) => {
+    xs.push(x);
+    zs.push(z);
+  });
+  const p = sim.node.position;
+  check(
+    "C3 corner pocket settles and stays",
+    !sim.controller.getState().crashed &&
+      Math.abs(p.x - -52.95) < 0.35 &&
+      Math.abs(p.z - -7.95) < 0.35 &&
+      range(xs) < 0.02 &&
+      range(zs) < 0.02,
+    `rest (${p.x.toFixed(2)}, ${p.z.toFixed(2)}), ranges ${range(xs).toFixed(3)}/${range(zs).toFixed(3)}`,
+  );
+  sim.scene.dispose();
+  sim.engine.dispose();
+}
+{
+  // Slow flight into a tall building's side, mid-air: blocked.
+  const TOWER: Obstacle = { kind: "box", name: "tower-shaft", minX: -83, maxX: -57, minZ: -32, maxZ: -12, baseY: 0, topY: 30 };
+  const sim = makeSim([TOWER], new Vector3(-40, 15, -22));
+  pinFor(sim, new Vector3(-4, 0, 0), 5);
+  const p = sim.node.position;
+  check(
+    "C4 slow mid-air hit is blocked, not a crash",
+    !sim.controller.getState().crashed && p.x > -53.3 && p.x < -52.6,
+    `stopped at x=${p.x.toFixed(2)}, y=${p.y.toFixed(1)}`,
+  );
+  sim.scene.dispose();
+  sim.engine.dispose();
+}
+{
+  // Sliding FAST along one wall into a perpendicular wall: crash.
+  const A: Obstacle = { kind: "box", name: "hangar-a", minX: -83, maxX: -57, minZ: -32, maxZ: 8, baseY: 0, topY: 10 };
+  const B: Obstacle = { kind: "box", name: "office-block", minX: -57, maxX: -37, minZ: -32, maxZ: -12, baseY: 0, topY: 10 };
+  const sim = makeSim([A, B], new Vector3(-52.95, 2.41, 2));
+  drive(sim, new Vector3(0, 0, -14), () => sim.controller.getState().crashed, 3);
+  const s = sim.controller.getState();
+  check(
+    "C5 fast slide into the cross wall crashes (and names it)",
+    s.crashed && s.crashReason.includes("office"),
+    s.crashReason,
+  );
+  sim.scene.dispose();
+  sim.engine.dispose();
+}
+
 console.log(failures === 0 ? "\nALL OBSTACLE TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
