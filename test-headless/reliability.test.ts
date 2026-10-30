@@ -149,6 +149,7 @@ const keyEvent = (code: string) => ({
       return codes.some((c) => this.keys.has(c));
     },
     wasJustPressed: () => false,
+    controlAxes: (out: { pitch: number; roll: number; yaw: number }) => { out.pitch = 0; out.roll = 0; out.yaw = 0; return out; },
     postUpdate: () => undefined,
   };
   const step = (keys: string[], seconds: number) => {

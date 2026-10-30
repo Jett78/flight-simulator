@@ -24,6 +24,13 @@ class FakeInput {
   wasJustPressed(): boolean {
     return false;
   }
+  controlAxes(out: { pitch: number; roll: number; yaw: number }) {
+    out.pitch = (this.keys.has("KeyS") ? 1 : 0) + (this.keys.has("KeyW") ? -1 : 0);
+    out.roll = (this.keys.has("KeyD") ? 1 : 0) + (this.keys.has("KeyA") ? -1 : 0);
+    out.yaw = (this.keys.has("KeyE") ? 1 : 0) + (this.keys.has("KeyQ") ? -1 : 0);
+    return out;
+  }
+
   postUpdate(): void {}
 }
 

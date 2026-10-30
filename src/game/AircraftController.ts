@@ -3,6 +3,7 @@ import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { InputManager } from "./InputManager";
 import { AIRCRAFT_RADIUS, CONTACT_SKIN, OBSTACLE_CRASH_SPEED, type ObstacleField } from "./obstacles";
+import { DEFAULT_VARIANT, type AircraftVariant } from "./aircraftVariants";
 
 /**
  * Simplified, semi-realistic flight model (Phase 4).
@@ -210,6 +211,17 @@ export class AircraftController {
   private readonly groundSampler: GroundSampler;
   /** Phase 13: solid buildings/trees, when the world provides them. */
   private readonly obstacles: ObstacleField | null;
+  /** Phase 14: active aircraft variant (flight-model profile). */
+  private variant: AircraftVariant;
+  private readonly _axes = { pitch: 0, roll: 0, yaw: 0 };
+
+  setVariant(variant: AircraftVariant): void {
+    this.variant = variant;
+  }
+
+  getVariant(): AircraftVariant {
+    return this.variant;
+  }
   private lastGround: GroundInfo = {
     height: GROUND_Y - GEAR_DEPTH,
     surface: "runway",
@@ -248,10 +260,12 @@ export class AircraftController {
     startPosition: Vector3,
     groundSampler?: GroundSampler,
     obstacles?: ObstacleField | null,
+    variant?: AircraftVariant,
   ) {
     this.aircraft = aircraft;
     this.startPosition = startPosition.clone();
     this.obstacles = obstacles ?? null;
+    this.variant = variant ?? DEFAULT_VARIANT;
     // Default: the pre-Phase-7 flat world (runway datum everywhere).
     this.groundSampler =
       groundSampler ??
@@ -327,27 +341,14 @@ export class AircraftController {
     } else {
       this.throttle = Math.max(0, this.throttle - THROTTLE_DECAY_RATE * dt);
     }
-    this.pitchInput = damp(
-      this.pitchInput,
-      (input.isDown("KeyS") ? 1 : 0) + (input.isDown("KeyW") ? -1 : 0),
-      INPUT_RESPONSE,
-      dt,
-    );
-    // Direction swap (Jeet, 2026-10-30): A rolls RIGHT, D rolls
-    // LEFT — the reverse of the original mapping.
-    this.rollInput = damp(
-      this.rollInput,
-      (input.isDown("KeyD") ? 1 : 0) + (input.isDown("KeyA") ? -1 : 0),
-      INPUT_RESPONSE,
-      dt,
-    );
-    // Direction swap (Jeet, 2026-10-30): Q yaws RIGHT, E yaws LEFT.
-    this.yawInput = damp(
-      this.yawInput,
-      (input.isDown("KeyE") ? 1 : 0) + (input.isDown("KeyQ") ? -1 : 0),
-      INPUT_RESPONSE,
-      dt,
-    );
+    // Control targets come from InputManager.controlAxes, which
+    // preserves the keyboard mapping exactly — including the
+    // direction swap (Jeet, 2026-10-30): A rolls RIGHT, D rolls
+    // LEFT; Q yaws RIGHT, E yaws LEFT — and adds gamepad sticks.
+    input.controlAxes(this._axes);
+    this.pitchInput = damp(this.pitchInput, this._axes.pitch, INPUT_RESPONSE, dt);
+    this.rollInput = damp(this.rollInput, this._axes.roll, INPUT_RESPONSE, dt);
+    this.yawInput = damp(this.yawInput, this._axes.yaw, INPUT_RESPONSE, dt);
 
     // ---------- Aerodynamic state ----------
     this.computeBasis();
@@ -369,20 +370,24 @@ export class AircraftController {
     this._alphaDeg = alphaDeg;
 
     // Lift coefficient: linear in AoA, clamped, then falls off post-stall
+    // (Phase 14: variant shifts both stall angles — Trainer later/softer.)
+    const stallPosDeg = STALL_POS_DEG + this.variant.stallShiftDeg;
+    const stallNegDeg = STALL_NEG_DEG + this.variant.stallShiftDeg;
     let cl = clamp(CL_ALPHA * alphaRad, CL_MIN, CL_MAX);
-    if (alphaDeg > STALL_POS_DEG) {
-      cl = Math.max(0.45, CL_MAX - (alphaDeg - STALL_POS_DEG) * 0.09);
-    } else if (alphaDeg < -STALL_NEG_DEG) {
-      cl = -Math.max(0.45, -CL_MIN - (-alphaDeg - STALL_NEG_DEG) * 0.09);
+    if (alphaDeg > stallPosDeg) {
+      cl = Math.max(0.45, CL_MAX - (alphaDeg - stallPosDeg) * 0.09);
+    } else if (alphaDeg < -stallNegDeg) {
+      cl = -Math.max(0.45, -CL_MIN - (-alphaDeg - stallNegDeg) * 0.09);
     }
-    const stallPos = clamp((alphaDeg - STALL_POS_DEG) / 7, 0, 1);
-    const stallNeg = clamp((-alphaDeg - STALL_NEG_DEG) / 7, 0, 1);
+    const stallPos = clamp((alphaDeg - stallPosDeg) / 7, 0, 1);
+    const stallNeg = clamp((-alphaDeg - stallNegDeg) / 7, 0, 1);
     const stallFactor = Math.max(stallPos, stallNeg);
     this._stallFactor = stallFactor;
 
     // Drag coefficient: parasite + induced + stall + high-speed rise
     const dragRise = 0.25 * smoothstep((speed - 85) / 35);
-    const cd = CD_PARASITE + CD_INDUCED_K * cl * cl + stallFactor * CD_STALL + dragRise;
+    const cd =
+      (CD_PARASITE + CD_INDUCED_K * cl * cl) * this.variant.drag + stallFactor * CD_STALL + dragRise;
 
     const dynamicPressure = 0.5 * AIR_DENSITY * speed * speed;
     const lift = dynamicPressure * WING_AREA * cl;
@@ -390,7 +395,7 @@ export class AircraftController {
     // Engine thrust fades with airspeed (prop/jet lapse), floored so
     // the aircraft can still cruise at altitude speed.
     const lapse = clamp(1 - speed / THRUST_LAPSE_SPEED, THRUST_LAPSE_FLOOR, 1);
-    const thrust = this.throttle * MAX_THRUST * lapse;
+    const thrust = this.throttle * MAX_THRUST * this.variant.thrust * lapse;
     this._lift = lift;
     this._drag = drag;
     this._thrust = thrust;
@@ -457,7 +462,8 @@ export class AircraftController {
 
     // Absolute speed cap (drag rise should hold it near ~112 m/s anyway)
     const newSpeed = this.velocity.length();
-    if (newSpeed > MAX_SPEED) this.velocity.scaleInPlace(MAX_SPEED / newSpeed);
+    const speedCap = MAX_SPEED * this.variant.topSpeed;
+    if (newSpeed > speedCap) this.velocity.scaleInPlace(speedCap / newSpeed);
 
     // ---------- Obstacles: depenetration (0.13.2) ----------
     // Rotation since the last step (yawing while parked against a
@@ -580,11 +586,11 @@ export class AircraftController {
       // needs airflow. Roll/nose-down are clamped by the ground itself.
       const steer = clamp(speed / 5, 0, 1);
       if (this.yawInput !== 0) {
-        node.rotate(AXIS_UP, this.yawInput * YAW_RATE * 1.2 * steer * dt, Space.LOCAL);
+        node.rotate(AXIS_UP, this.yawInput * YAW_RATE * this.variant.rates * 1.2 * steer * dt, Space.LOCAL);
       }
       if (this.pitchInput > 0) {
         const airflow = clamp(speed / 32, 0, 1);
-        node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * airflow * dt, Space.LOCAL);
+        node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * this.variant.rates * airflow * dt, Space.LOCAL);
       }
       // Hard attitude clamps while the wheels carry the aircraft:
       // pitch between 0 and ~14 degrees, roll zeroed.
@@ -600,7 +606,7 @@ export class AircraftController {
     // Airborne: control power grows with airspeed and fades in a stall
     const effectiveness = clamp(0.3 + speed / 38, 0.3, 1) * (1 - 0.5 * stallFactor);
     if (this.pitchInput !== 0) {
-      node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * effectiveness * dt, Space.LOCAL);
+      node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * this.variant.rates * effectiveness * dt, Space.LOCAL);
     }
     if (this.rollInput !== 0) {
       // Soft bank limit (~35-50 degrees): rolling further into a steep
@@ -616,12 +622,12 @@ export class AircraftController {
       }
       node.rotate(
         AXIS_BACK,
-        this.rollInput * ROLL_RATE * effectiveness * rollAuthority * dt,
+        this.rollInput * ROLL_RATE * this.variant.rates * effectiveness * rollAuthority * dt,
         Space.LOCAL,
       );
     }
     if (this.yawInput !== 0) {
-      node.rotate(AXIS_UP, this.yawInput * YAW_RATE * effectiveness * dt, Space.LOCAL);
+      node.rotate(AXIS_UP, this.yawInput * YAW_RATE * this.variant.rates * effectiveness * dt, Space.LOCAL);
     }
 
     // Stall: the nose drops toward the flight path, controls feel weak

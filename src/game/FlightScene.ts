@@ -15,6 +15,11 @@ import {
 } from "./checkpointMarkers";
 import type { CheckpointVisual } from "./missions";
 import { loadAircraftModel } from "./aircraftModel";
+import {
+  aircraftVariantById,
+  loadAircraftVariantId,
+  saveAircraftVariantId,
+} from "./aircraftVariants";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
@@ -118,6 +123,11 @@ export class FlightScene {
   /** Optional UI callbacks, assigned by the React host. */
   onCameraModeChange?: (modeName: string) => void;
   onTelemetry?: (state: FlightState) => void;
+  /** Phase 14: gamepad connect/disconnect, for the HUD chip. */
+  onGamepadConnectionChange?: (connected: boolean) => void;
+
+  /** Phase 14: original paint colours, captured before any tint. */
+  private readonly paintOriginals = new Map<number, Color3>();
 
   private readonly engine: Engine;
   private readonly scene: Scene;
@@ -196,7 +206,16 @@ export class FlightScene {
     this.input = new InputManager();
     // Phase 7: the controller judges ground contact, touchdowns and
     // crashes against the real island/runway ground sampler.
-    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START, createGroundSampler(), this.obstacleField);
+    this.controller = new AircraftController(
+      this.aircraft,
+      AIRCRAFT_START,
+      createGroundSampler(),
+      this.obstacleField,
+      aircraftVariantById(loadAircraftVariantId()),
+    );
+    this.input.onGamepadConnectionChange = (connected) =>
+      this.onGamepadConnectionChange?.(connected);
+    this.applyAircraftPaint(); // placeholder wears the tint until the model lands
 
     // Development-only debug handle (Phase 4 §6): in `npm run dev`,
     // open the console and use __flightSim.state() / __flightSim.reset()
@@ -364,6 +383,52 @@ export class FlightScene {
     this.resetCamera();
   }
 
+  // ---------- Phase 14: aircraft variants ----------
+
+  getAircraftVariantId(): string {
+    return this.controller.getVariant().id;
+  }
+
+  isGamepadConnected(): boolean {
+    return this.input.gamepadConnected;
+  }
+
+  /**
+   * Switch edition: new flight profile + paint, persisted, and
+   * the aircraft resets (same contract as starting a mission).
+   */
+  setAircraftVariant(id: string): void {
+    const variant = aircraftVariantById(id);
+    this.controller.setVariant(variant);
+    saveAircraftVariantId(variant.id);
+    this.applyAircraftPaint();
+    this.resetAircraft();
+  }
+
+  /**
+   * Apply the active variant's tint to every aircraft material.
+   * Originals are captured once, so switching back to Standard
+   * restores the exact stock colours.
+   */
+  private applyAircraftPaint(): void {
+    const [tr, tg, tb] = this.controller.getVariant().tint;
+    for (const mesh of this.aircraft.getChildMeshes(false)) {
+      const mat = mesh.material as unknown as {
+        uniqueId: number;
+        albedoColor?: Color3;
+        diffuseColor?: Color3;
+      } | null;
+      if (!mat) continue;
+      const prop = mat.albedoColor ? "albedoColor" : mat.diffuseColor ? "diffuseColor" : null;
+      if (!prop) continue;
+      if (!this.paintOriginals.has(mat.uniqueId)) {
+        this.paintOriginals.set(mat.uniqueId, mat[prop]!.clone());
+      }
+      const orig = this.paintOriginals.get(mat.uniqueId)!;
+      mat[prop]!.copyFromFloats(orig.r * tr, orig.g * tg, orig.b * tb);
+    }
+  }
+
   /**
    * Phase 9: show/hide the checkpoint guidance set for the active
    * mission (rings + route ribbon + next-ring beacon + badges, built
@@ -526,6 +591,7 @@ export class FlightScene {
     void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh)).then(
       (loaded) => {
         clearTimeout(revealTimer);
+        if (loaded) this.applyAircraftPaint();
         if (loaded) {
           const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
           if (cockpit) {

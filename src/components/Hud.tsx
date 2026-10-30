@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { FlightState } from "../game/AircraftController";
+import { AIRCRAFT_VARIANTS } from "../game/aircraftVariants";
 import {
   CHECKPOINTS,
   MISSION_INFO,
@@ -47,6 +48,11 @@ interface HudProps {
   onResetView: () => void;
   /** Phase 9: show/hide the 3D checkpoint rings. */
   setCheckpoints: (visuals: CheckpointVisual[]) => void;
+  /** Phase 14: active aircraft variant + picker callback. */
+  aircraftVariantId: string;
+  onSelectAircraft: (id: string) => void;
+  /** Phase 14: a gamepad is connected (shows the 🎮 chip). */
+  gamepadConnected: boolean;
 }
 
 interface RunSummary {
@@ -128,8 +134,12 @@ export function Hud({
   onResetAircraft,
   onResetView,
   setCheckpoints,
+  aircraftVariantId,
+  onSelectAircraft,
+  gamepadConnected,
 }: HudProps) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aircraftOpen, setAircraftOpen] = useState(false);
 
   // Phase 9 mission UI state (discrete changes only — per-frame
   // objective text is written through refs by the rAF loop below).
@@ -552,7 +562,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 13 · COLLISIONS</div>
+        <div className="hud-badge">PHASE 14 · AIRCRAFT + GAMEPAD</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -590,6 +600,19 @@ export function Hud({
           >
             🏁 Missions
           </button>
+          <button
+            type="button"
+            className="hud-btn"
+            aria-expanded={aircraftOpen}
+            onClick={() => setAircraftOpen((open) => !open)}
+          >
+            🛩 Aircraft
+          </button>
+          {gamepadConnected && (
+            <span className="hud-camera-chip" title="Gamepad connected — see Controls for the mapping">
+              🎮 Gamepad
+            </span>
+          )}
           <button
             type="button"
             className="hud-btn"
@@ -643,6 +666,31 @@ export function Hud({
             <div className="hud-missions-note">Starting a mission resets the aircraft.</div>
           </aside>
         )}
+        {aircraftOpen && (
+          <aside className="hud-panel hud-missions" aria-label="Aircraft selection">
+            <div className="hud-missions-title">Aircraft</div>
+            {AIRCRAFT_VARIANTS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className={`hud-mission-row${aircraftVariantId === v.id ? " is-active" : ""}`}
+                onClick={() => {
+                  onSelectAircraft(v.id);
+                  setAircraftOpen(false);
+                }}
+              >
+                <span className="hud-mission-name">{v.name}</span>
+                <span className="hud-mission-blurb">{v.blurb}</span>
+                <span className="hud-aircraft-stats">
+                  Speed {"●".repeat(v.stats.speed)}{"○".repeat(5 - v.stats.speed)} · Agility{" "}
+                  {"●".repeat(v.stats.agility)}{"○".repeat(5 - v.stats.agility)} · Ease{" "}
+                  {"●".repeat(v.stats.ease)}{"○".repeat(5 - v.stats.ease)}
+                </span>
+              </button>
+            ))}
+            <div className="hud-missions-note">Switching aircraft resets the flight.</div>
+          </aside>
+        )}
         {helpOpen && (
           <aside className="hud-panel hud-help" aria-label="Flight controls">
             <ul>
@@ -666,6 +714,11 @@ export function Hud({
               <li>
                 <strong>Mouse drag</strong> on the view — look around
                 (Reset view recentres)
+              </li>
+              <li>
+                <strong>Gamepad</strong> — left stick pitch/roll · right
+                stick or bumpers yaw · RT throttle · LT/B cut · A camera
+                · Y reset · Start pause
               </li>
               <li className="hud-help-tip">
                 Buildings and trees are solid: bump them slowly and you

@@ -764,6 +764,12 @@
   letter-spacing: 0.04em;
 }
 
+.hud-aircraft-stats {
+  font-size: 11px;
+  color: #9fb4c8;
+  letter-spacing: 0.06em;
+}
+
 .hud-mission-blurb {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.65);

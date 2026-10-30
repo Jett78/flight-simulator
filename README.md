@@ -46,7 +46,46 @@ The mission minimap (gold next / blue later / runway line /
 route, `MAP_EXTENT` 1,750) and the steering arrow already
 covered the map leg of this fix and are unchanged.
 
-## Patch 0.13.2 — Smooth building contact: the "lag" fix (current)
+## Phase 14 — Aircraft variants + gamepad support (current)
+
+Jeet's pick from the post-audit roadmap. Two additions:
+
+**Aircraft variants** (`src/game/aircraftVariants.ts`): one
+airframe, three editions, switchable from the new 🛩 Aircraft
+panel (paint tint on the model + a flight-model profile in
+`AircraftController`: thrust / control-rate / drag / top-speed
+multipliers and a stall-angle shift; the choice persists in
+localStorage and switching resets the flight, like a mission):
+- **Standard** — stock paint, stock tuning (all scales 1; the
+  pre-Phase-14 behaviour, unchanged).
+- **Trainer** — warm yellow tint; 0.78× thrust, 0.8× rates,
+  1.12× drag, stall arrives 3° later. Gentle on purpose.
+- **Sport** — coral tint; 1.38× thrust, 1.3× rates, 0.88× drag,
+  1.18× top speed, stall arrives 2° earlier. Lively on purpose.
+
+**Gamepad support** (`InputManager`): any standard-mapping pad
+is polled every frame and merged into the same input surface
+the keyboard uses — left stick pitch/roll (analog, 0.18
+deadzone), right stick X or LB/RB yaw, RT = throttle (Shift),
+LT/B = cut (Space), A = camera, Y = reset, Start = pause (via a
+synthetic KeyP for the App layer). Stick signs follow the
+0.12.1 control swap (push right = bank right / yaw right). A
+🎮 chip appears in the top bar while a pad is connected, and
+the Controls help lists the mapping.
+
+Verification: new suite `test-headless/variants_gamepad.test.ts`
+(V1–V3 profile ordering — Sport accelerates 6.5 vs Standard 4.6
+vs Trainer 3.5 m/s after a 2 s full-throttle roll, banks 27° vs
+20° vs 16° in 0.35 s, stall factors 0.57/0.29/0.00 at AoA 17°;
+G1–G11 gamepad mapping incl. deadzone, edges and the KeyP
+dispatch) — all suites pass. Live in the browser with a
+synthetic pad: 🎮 chip shown, RT drove the throttle with the
+same Sport > Trainer ordering (8.2 vs 4.4 m/s), stick pull
+pitched the nose up 10.7°, A cycled the camera exactly once per
+press, variant choice survived a page reload, and both new
+paints were screenshot-checked.
+
+## Patch 0.13.2 — Smooth building contact: the "lag" fix
 
 Jeet: slowly running the plane into a building didn't crash
 (correct) but felt like severe lag — the plane ground, jittered

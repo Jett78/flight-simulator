@@ -16,12 +16,22 @@ export default function App() {
   const sceneRef = useRef<FlightScene | null>(null);
   const [cameraMode, setCameraMode] = useState("Chase");
   const [paused, setPaused] = useState(false);
+  const [aircraftVariantId, setAircraftVariantId] = useState("standard");
+  const [gamepadConnected, setGamepadConnected] = useState(false);
 
   const handleReady = useCallback((scene: FlightScene | null) => {
     sceneRef.current = scene;
     if (scene) {
       scene.onCameraModeChange = (name) => setCameraMode(name);
+      scene.onGamepadConnectionChange = (connected) => setGamepadConnected(connected);
+      setAircraftVariantId(scene.getAircraftVariantId());
+      setGamepadConnected(scene.isGamepadConnected());
     }
+  }, []);
+
+  const handleSelectAircraft = useCallback((id: string) => {
+    sceneRef.current?.setAircraftVariant(id);
+    setAircraftVariantId(id);
   }, []);
 
   const getState = useCallback((): FlightState | null => {
@@ -72,6 +82,9 @@ export default function App() {
         onResetAircraft={handleResetAircraft}
         onResetView={handleResetView}
         setCheckpoints={handleSetCheckpoints}
+        aircraftVariantId={aircraftVariantId}
+        onSelectAircraft={handleSelectAircraft}
+        gamepadConnected={gamepadConnected}
       />
     </main>
   );
