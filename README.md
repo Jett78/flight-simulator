@@ -46,7 +46,42 @@ The mission minimap (gold next / blue later / runway line /
 route, `MAP_EXTENT` 1,750) and the steering arrow already
 covered the map leg of this fix and are unchanged.
 
-## Patch 0.12.1 — Control directions swapped, wind sound removed (current)
+## Phase 13 — Solid buildings & trees, explosion on crash (current)
+
+Jeet's report: you could fly/drive straight THROUGH the airport
+buildings. Now everything solid is solid.
+
+- **Obstacle registry** (`src/game/obstacles.ts`): while the
+  builders run, `createAirport` records boxes for the hangars,
+  terminal, Terminal 2, office, tower shaft, cargo block, fire
+  station, fuel pump house and containers, cylinders for the
+  fuel tanks, radar pole and airport trees; `createIsland`
+  records every placed island tree (~1,000), the village houses
+  and the lighthouse. An `ObstacleField` indexes them on a 64 m
+  spatial grid, so a per-physics-step query only tests the
+  handful of volumes in the aircraft's cell.
+- **Collision** (in `AircraftController`, after ground contact):
+  the aircraft is a 4 m sphere. Above 10 m/s (~36 km/h) a hit
+  latches a crash naming the object ("Crashed into a hangar",
+  "…a tree", "…the control tower", …). Below that speed the
+  aircraft is pushed back out along the surface and its velocity
+  into the surface is removed — taxi into a hangar and you bump
+  to a stop; you cannot pass through. Flying over everything
+  works as before (vertical check first).
+- **Explosion**: on the crash edge `FlightScene` spawns a
+  procedural fireball (additive particles from a radial-gradient
+  sprite), a rising smoke cloud and a point-light flash, plus a
+  ~0.7 s camera shake. No assets; the effect is guarded so it
+  can never break a frame, and systems dispose themselves.
+- Verify: `test-headless/obstacles.test.ts` — registry contents
+  (spawn/runway provably clear), slow-bump stops exactly at the
+  wall face (x = -53.0 for hangar A), fast hits crash for both a
+  building and a tree, overflight unaffected. All other suites
+  pass (they construct controllers without a field, which stays
+  a supported no-collision mode). Also verified in a real browser
+  by driving into a hangar.
+
+## Patch 0.12.1 — Control directions swapped, wind sound removed
 
 Two changes Jeet asked for directly (2026-10-30):
 

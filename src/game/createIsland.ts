@@ -14,6 +14,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import type { Scene } from "@babylonjs/core/scene";
 import { createMaterial } from "./materials";
+import type { Obstacle } from "./obstacles";
 
 /**
  * Procedural island environment (Phase 5).
@@ -228,10 +229,13 @@ function terrainColor(h: number, slope: number, tint: number, out: number[]): vo
 
 export interface IslandResult {
   terrain: Mesh;
+  /** Phase 13: solid volumes for collision (trees, houses, lighthouse). */
+  obstacles: Obstacle[];
 }
 
 export function createIsland(scene: Scene): IslandResult {
   const rng = mulberry32(1337);
+  const obstacles: Obstacle[] = [];
 
   // ---------- Sky dome (gradient vertex colours, no fog) ----------
   const sky = MeshBuilder.CreateSphere(
@@ -404,6 +408,15 @@ export function createIsland(scene: Scene): IslandResult {
     top.position.set(x, h - sink + 7.4 * sy, z);
     top.rotation.y = yaw;
     top.scaling.set(s, sy, s);
+    obstacles.push({
+      kind: "cylinder",
+      name: `island-tree-${placed}`,
+      x,
+      z,
+      radius: 1.5,
+      baseY: h - 0.6,
+      topY: h + 9 * sy,
+    });
     placed++;
   }
   trunkBase.isVisible = false;
@@ -431,6 +444,16 @@ export function createIsland(scene: Scene): IslandResult {
       scene,
     );
     house.position = new Vector3(VILLAGE.x + dx, VILLAGE.h + hgt / 2 - 0.15, VILLAGE.z + dz);
+    obstacles.push({
+      kind: "box",
+      name: `house-${i}`,
+      minX: VILLAGE.x + dx - Math.max(w, d) * 0.55,
+      maxX: VILLAGE.x + dx + Math.max(w, d) * 0.55,
+      minZ: VILLAGE.z + dz - Math.max(w, d) * 0.55,
+      maxZ: VILLAGE.z + dz + Math.max(w, d) * 0.55,
+      baseY: VILLAGE.h - 0.15,
+      topY: VILLAGE.h - 0.15 + hgt,
+    });
     house.rotation.y = rot;
     house.material = wallMats[i % wallMats.length];
     house.receiveShadows = true;
@@ -452,6 +475,7 @@ export function createIsland(scene: Scene): IslandResult {
     const lx = 1560;
     const lz = -90;
     const baseY = terrainMeshHeightAt(lx, lz);
+    obstacles.push({ kind: "box", name: "lighthouse", minX: lx - 2.4, maxX: lx + 2.4, minZ: lz - 2.4, maxZ: lz + 2.4, baseY: baseY - 1, topY: baseY + 16 });
     const white = createMaterial(scene, "lighthouse-white", 0.92, 0.92, 0.9);
     const red = createMaterial(scene, "lighthouse-red", 0.75, 0.2, 0.16);
     const shaft = MeshBuilder.CreateCylinder(
@@ -475,5 +499,5 @@ export function createIsland(scene: Scene): IslandResult {
     });
   }
 
-  return { terrain };
+  return { terrain, obstacles };
 }

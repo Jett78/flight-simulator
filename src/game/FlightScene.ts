@@ -20,6 +20,10 @@ import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
 import { createGroundSampler } from "./runway";
+import { ObstacleField } from "./obstacles";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import type { GroundSampler } from "./AircraftController";
 
 /**
@@ -133,6 +137,11 @@ export class FlightScene {
   private readonly _orbitQuat = new Quaternion();
   private readonly _orbitVec = new Vector3();
   private dragLookDispose: (() => void) | null = null;
+  private obstacleField: ObstacleField | null = null;
+  // Phase 13 explosion state
+  private wasCrashed = false;
+  private shakeTime = 0;
+  private explosionFx: Array<{ systems: ParticleSystem[]; light: PointLight | null; ttl: number }> = [];
   /** Camera-only ground sampler: keeps an orbited camera out of the terrain. */
   private readonly cameraSampler: GroundSampler = createGroundSampler();
   private telemetryTimer = 0;
@@ -187,7 +196,7 @@ export class FlightScene {
     this.input = new InputManager();
     // Phase 7: the controller judges ground contact, touchdowns and
     // crashes against the real island/runway ground sampler.
-    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START, createGroundSampler());
+    this.controller = new AircraftController(this.aircraft, AIRCRAFT_START, createGroundSampler(), this.obstacleField);
 
     // Development-only debug handle (Phase 4 §6): in `npm run dev`,
     // open the console and use __flightSim.state() / __flightSim.reset()
@@ -313,6 +322,16 @@ export class FlightScene {
     }
     if (steps === MAX_PHYSICS_STEPS) this.physicsAccumulator = 0;
 
+    // Phase 13: on the crash edge, explode + shake.
+    const crashedNow = this.controller.getState().crashed;
+    if (crashedNow && !this.wasCrashed) {
+      this.spawnExplosion(this.aircraft.position);
+      this.shakeTime = 0.7;
+    }
+    this.wasCrashed = crashedNow;
+    if (this.shakeTime > 0) this.shakeTime = Math.max(0, this.shakeTime - frameDt);
+    this.updateExplosionFx(frameDt);
+
     this.updateChaseCamera(frameDt);
 
     this.telemetryTimer += frameDt;
@@ -425,6 +444,12 @@ export class FlightScene {
     Vector3.LerpToRef(this.camera.position, this._desiredPos, posAlpha, this.camera.position);
     Vector3.LerpToRef(this.smoothedTarget, this._desiredTarget, targetAlpha, this.smoothedTarget);
     this.camera.setTarget(this.smoothedTarget);
+    if (this.shakeTime > 0) {
+      const a = 0.55 * (this.shakeTime / 0.7);
+      this.camera.position.x += (Math.random() * 2 - 1) * a;
+      this.camera.position.y += (Math.random() * 2 - 1) * a;
+      this.camera.position.z += (Math.random() * 2 - 1) * a;
+    }
   }
 
   /** Snap the camera back to the current mode's pose, instantly. */
@@ -471,8 +496,11 @@ export class FlightScene {
   private buildWorld(shadows: ShadowGenerator): TransformNode {
     // Island first: its terrain is flat y=0 across the airport pad,
     // so the airport meshes sit on it exactly as on the old ground.
-    createIsland(this.scene);
+    const island = createIsland(this.scene);
     const airport = createAirport(this.scene);
+    // Phase 13: every solid thing the builders recorded becomes
+    // collidable — buildings, tanks, trees, houses, lighthouse.
+    this.obstacleField = new ObstacleField([...airport.obstacles, ...island.obstacles]);
     for (const mesh of airport.shadowCasters) shadows.addShadowCaster(mesh);
 
     const airplane = createAirplane(this.scene);
@@ -562,12 +590,114 @@ export class FlightScene {
     };
   }
 
+  /**
+   * Phase 13: the crash fireball — a burst of additive fire
+   * particles, a slower smoke cloud, and a point-light flash, all
+   * procedural (a radial-gradient sprite; no assets). чисто visual:
+   * any failure here must never affect the simulation, hence the
+   * guard. Systems clean themselves up in updateExplosionFx.
+   */
+  private spawnExplosion(at: Vector3): void {
+    try {
+      const scene = this.scene;
+      const tex = new DynamicTexture("explosion-tex", { width: 64, height: 64 }, scene, false);
+      const ctx = tex.getContext();
+      const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.4, "rgba(255,255,255,0.55)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+      tex.update();
+      tex.hasAlpha = true;
+
+      const fire = new ParticleSystem("explosion-fire", 130, scene);
+      fire.particleTexture = tex;
+      fire.emitter = at.clone();
+      fire.minEmitBox = new Vector3(-1.6, -0.4, -1.6);
+      fire.maxEmitBox = new Vector3(1.6, 1.2, 1.6);
+      fire.color1 = new Color4(1, 0.6, 0.14, 1);
+      fire.color2 = new Color4(0.94, 0.24, 0.04, 1);
+      fire.colorDead = new Color4(0.25, 0.03, 0, 0);
+      fire.minSize = 1.3;
+      fire.maxSize = 3.8;
+      fire.minLifeTime = 0.45;
+      fire.maxLifeTime = 1.1;
+      fire.emitRate = 0;
+      fire.manualEmitCount = 120;
+      fire.direction1 = new Vector3(-1, 0.1, -1);
+      fire.direction2 = new Vector3(1, 1.5, 1);
+      fire.minEmitPower = 5;
+      fire.maxEmitPower = 13;
+      fire.updateSpeed = 0.02;
+      fire.blendMode = ParticleSystem.BLENDMODE_ADD;
+      fire.start();
+
+      const smoke = new ParticleSystem("explosion-smoke", 60, scene);
+      smoke.particleTexture = tex;
+      smoke.emitter = at.clone();
+      smoke.minEmitBox = new Vector3(-1.2, 0, -1.2);
+      smoke.maxEmitBox = new Vector3(1.2, 1.6, 1.2);
+      smoke.color1 = new Color4(0.16, 0.16, 0.16, 0.75);
+      smoke.color2 = new Color4(0.3, 0.3, 0.3, 0.55);
+      smoke.colorDead = new Color4(0.4, 0.4, 0.4, 0);
+      smoke.minSize = 2.4;
+      smoke.maxSize = 6;
+      smoke.minLifeTime = 1.6;
+      smoke.maxLifeTime = 2.8;
+      smoke.emitRate = 0;
+      smoke.manualEmitCount = 46;
+      smoke.direction1 = new Vector3(-0.5, 0.8, -0.5);
+      smoke.direction2 = new Vector3(0.5, 1.6, 0.5);
+      smoke.minEmitPower = 2;
+      smoke.maxEmitPower = 5;
+      smoke.updateSpeed = 0.016;
+      smoke.start();
+
+      const light = new PointLight("explosion-light", at.clone().add(new Vector3(0, 2.5, 0)), scene);
+      light.diffuse = new Color3(1, 0.55, 0.2);
+      light.intensity = 55;
+      light.range = 70;
+
+      this.explosionFx.push({ systems: [fire, smoke], light, ttl: 3 });
+    } catch {
+      // Visual garnish only — a failed effect must never break a frame.
+    }
+  }
+
+  private updateExplosionFx(dt: number): void {
+    if (this.explosionFx.length === 0) return;
+    const keep: typeof this.explosionFx = [];
+    for (const fx of this.explosionFx) {
+      fx.ttl -= dt;
+      if (fx.light) {
+        // The flash decays over the first ~0.6 s.
+        fx.light.intensity = 55 * Math.max(0, Math.min(1, (fx.ttl - 2.4) / 0.6));
+      }
+      if (fx.ttl <= 0) {
+        for (const s of fx.systems) {
+          s.stop();
+          s.dispose();
+        }
+        fx.light?.dispose();
+      } else {
+        keep.push(fx);
+      }
+    }
+    this.explosionFx = keep;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     window.removeEventListener("resize", this.onResize);
     this.dragLookDispose?.();
     this.dragLookDispose = null;
+    for (const fx of this.explosionFx) {
+      fx.systems.forEach((s) => s.dispose());
+      fx.light?.dispose();
+    }
+    this.explosionFx = [];
     this.perfInstrumentation?.dispose();
     this.perfInstrumentation = null;
     this.perfOverlay?.remove();

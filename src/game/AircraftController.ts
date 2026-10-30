@@ -2,6 +2,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { InputManager } from "./InputManager";
+import { AIRCRAFT_RADIUS, OBSTACLE_CRASH_SPEED, type ObstacleField } from "./obstacles";
 
 /**
  * Simplified, semi-realistic flight model (Phase 4).
@@ -207,6 +208,8 @@ export class AircraftController {
   lastTouchdown: TouchdownInfo | null = null;
 
   private readonly groundSampler: GroundSampler;
+  /** Phase 13: solid buildings/trees, when the world provides them. */
+  private readonly obstacles: ObstacleField | null;
   private lastGround: GroundInfo = {
     height: GROUND_Y - GEAR_DEPTH,
     surface: "runway",
@@ -240,9 +243,15 @@ export class AircraftController {
   private readonly _force = new Vector3();
   private readonly _tmp = new Vector3();
 
-  constructor(aircraft: TransformNode, startPosition: Vector3, groundSampler?: GroundSampler) {
+  constructor(
+    aircraft: TransformNode,
+    startPosition: Vector3,
+    groundSampler?: GroundSampler,
+    obstacles?: ObstacleField | null,
+  ) {
     this.aircraft = aircraft;
     this.startPosition = startPosition.clone();
+    this.obstacles = obstacles ?? null;
     // Default: the pre-Phase-7 flat world (runway datum everywhere).
     this.groundSampler =
       groundSampler ??
@@ -483,6 +492,31 @@ export class AircraftController {
     if (node.position.y > CEILING_Y) {
       node.position.y = CEILING_Y;
       if (this.velocity.y > 0) this.velocity.y = 0;
+    }
+
+    // ---------- Obstacles (Phase 13) ----------
+    // Buildings and trees are solid. A fast hit crashes; a slow
+    // one pushes the aircraft back out and kills the velocity
+    // into the surface, so you can bump a hangar while taxiing
+    // but never drive through it.
+    if (this.obstacles && !this.crashed) {
+      const hit = this.obstacles.query(node.position.x, node.position.y, node.position.z, AIRCRAFT_RADIUS);
+      if (hit) {
+        node.position.x += hit.pushX * hit.depth;
+        node.position.z += hit.pushZ * hit.depth;
+        const impactSpeed = this.velocity.length();
+        if (impactSpeed > OBSTACLE_CRASH_SPEED) {
+          this.registerCrash(`Crashed into ${hit.label}`);
+          return;
+        }
+        const vn = this.velocity.x * hit.pushX + this.velocity.z * hit.pushZ;
+        if (vn < 0) {
+          this.velocity.x -= vn * hit.pushX;
+          this.velocity.z -= vn * hit.pushZ;
+        }
+        this.velocity.x *= 0.5;
+        this.velocity.z *= 0.5;
+      }
     }
 
     // ---------- Attitude ----------

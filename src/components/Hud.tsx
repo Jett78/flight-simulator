@@ -552,7 +552,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 12.1 · FIND THE NEXT RING</div>
+        <div className="hud-badge">PHASE 13 · COLLISIONS</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -666,6 +666,10 @@ export function Hud({
               <li>
                 <strong>Mouse drag</strong> on the view — look around
                 (Reset view recentres)
+              </li>
+              <li className="hud-help-tip">
+                Buildings and trees are solid: bump them slowly and you
+                stop — hit them fast and you crash.
               </li>
               <li className="hud-help-tip">
                 Hold Shift — at ~100 km/h pull S to take off. Land back on
