@@ -100,6 +100,24 @@ gear contact — see `normalizeProceduralModel` in
 decided by `modelSourceFor(config)`: a `modelPath` wins, then
 `proceduralModel`, then the generic placeholder.
 
+## Scenery models — parked helicopters (v0.21.0)
+
+Two helicopters parked on the apron beside the taxiway
+(`src/game/createHelicopters.ts`; same GLB → embedded-text
+glTF conversion as the aircraft):
+
+- **`public/models/heli-grey.gltf`** — "Helicopter" by
+  **Quaternius**, via Poly Pizza
+  https://poly.pizza/m/eb7b31pjGtQ. **CC0** (public domain;
+  credited here as a courtesy). White/grey utility helicopter
+  with blue cockpit glass, parked at the apron's south end.
+- **`public/models/heli-red.gltf`** — "Helicopter" by
+  **Poly by Google**, via Poly Pizza
+  https://poly.pizza/m/cTzINMr0WdS. Licensed under
+  **Creative Commons Attribution (CC-BY)**, as shown on the
+  model page. White/red helicopter parked at the apron's
+  north end.
+
 ## Supplying different glTF/GLB models (manual step)
 
 To swap any aircraft's model for another one:

@@ -1,6 +1,7 @@
-/* Multi-aircraft Phase 2 — selection screen.
-   Same visual language as the HUD: deep-navy panels on sky,
-   gold (#ffd166) as the single accent. */
+/* Selection screen (redesigned v0.21.0).
+   Photo-led cards using real in-game screenshots of each
+   aircraft; deep-navy panels and a single gold accent kept
+   only for selection state and the Fly action. */
 
 .select-root {
   position: fixed;
@@ -10,32 +11,27 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  padding: 28px 18px 34px;
+  gap: 24px;
+  padding: 30px 18px 36px;
   color: #eef5fd;
-  background:
-    radial-gradient(1100px 480px at 50% 108%, rgba(255, 209, 102, 0.22), rgba(255, 209, 102, 0) 60%),
-    linear-gradient(180deg, #0c2a52 0%, #2c66ac 46%, #78b5f5 82%, #a9cff8 100%);
+  background: linear-gradient(180deg, #081c3a 0%, #1d4e89 44%, #6ea8e8 80%, #a9cff8 100%);
 }
 
 .select-head {
   text-align: center;
 }
 
-.select-badge {
-  display: inline-block;
-  font-size: 11px;
+.select-overline {
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.16em;
-  color: #0b1d33;
-  background: #ffd166;
-  border-radius: 4px;
-  padding: 4px 9px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #ffd166;
 }
 
 .select-head h1 {
-  margin: 12px 0 6px;
-  font-size: clamp(28px, 4.5vw, 42px);
+  margin: 10px 0 6px;
+  font-size: clamp(30px, 4.5vw, 44px);
   font-weight: 800;
   letter-spacing: 0.01em;
   text-shadow: 0 2px 14px rgba(4, 20, 40, 0.45);
@@ -51,21 +47,21 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 18px;
-  max-width: 1080px;
+  gap: 20px;
+  max-width: 1120px;
 }
 
 .select-card {
   font: inherit;
   text-align: left;
   color: inherit;
-  width: 320px;
-  max-width: min(320px, 92vw);
-  padding: 16px 16px 14px;
-  background: rgba(8, 18, 32, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
-  backdrop-filter: blur(6px);
+  width: 338px;
+  max-width: min(338px, 92vw);
+  padding: 0 0 16px;
+  background: rgba(6, 14, 26, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 16px;
+  overflow: hidden;
   cursor: pointer;
   position: relative;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
@@ -73,95 +69,107 @@
 
 .select-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.38);
+  border-color: rgba(255, 255, 255, 0.36);
 }
 
 .select-card.is-selected {
   border-color: rgba(255, 209, 102, 0.95);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 209, 102, 0.55);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255, 209, 102, 0.55);
   transform: translateY(-4px);
 }
 
-.select-art {
-  height: 104px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(120, 181, 245, 0.35), rgba(120, 181, 245, 0.07));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
+/* --- Photo header: the exact aircraft, as it looks in game --- */
+.select-photo {
+  position: relative;
+  aspect-ratio: 16 / 7.4;
+  background: #0a1a30;
 }
 
-.select-art svg {
-  width: 88%;
-  height: auto;
+.select-photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  user-select: none;
 }
 
-.select-art .art-body {
-  fill: #eaf4ff;
+.select-photo::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 46%;
+  background: linear-gradient(180deg, rgba(4, 12, 24, 0), rgba(4, 12, 24, 0.72));
+  pointer-events: none;
 }
 
-.select-art .art-wing {
-  fill: #bcd8f7;
-}
-
-.select-art .art-detail {
-  fill: #7fb2e8;
-}
-
-.select-art .art-prop {
-  fill: rgba(234, 244, 255, 0.55);
-}
-
-.select-art .art-window {
-  fill: #2c66ac;
-}
-
-.select-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.select-card-top h2 {
+.select-photo h2 {
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  z-index: 1;
   margin: 0;
-  font-size: 19px;
-  font-weight: 750;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
 .select-chip {
-  flex: none;
+  position: absolute;
+  top: 12px;
+  left: 12px;
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
+  color: #eef5fd;
+  background: rgba(5, 12, 22, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 4px 9px;
+  backdrop-filter: blur(4px);
+}
+
+.select-selected {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   color: #0b1d33;
   background: #ffd166;
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 4px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .select-desc {
-  margin: 8px 0 12px;
+  margin: 13px 16px 12px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: rgba(238, 245, 253, 0.82);
-  min-height: 57px;
+  min-height: 59px;
 }
 
 .select-stats {
   display: flex;
-  gap: 8px;
-  margin: 0;
+  margin: 0 16px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .select-stats > div {
   flex: 1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 8px;
-  padding: 7px 9px;
+  padding: 0 12px;
+}
+
+.select-stats > div:first-child {
+  padding-left: 0;
+}
+
+.select-stats > div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .select-stats dt {
@@ -169,44 +177,26 @@
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: rgba(238, 245, 253, 0.6);
+  color: rgba(238, 245, 253, 0.55);
 }
 
 .select-stats dd {
-  margin: 2px 0 0;
-  font-size: 13.5px;
-  font-weight: 700;
+  margin: 3px 0 0;
+  font-size: 14.5px;
+  font-weight: 750;
   white-space: nowrap;
-}
-
-.select-selected {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: #ffd166;
-  background: rgba(8, 18, 32, 0.85);
-  border: 1px solid rgba(255, 209, 102, 0.7);
-  border-radius: 999px;
-  padding: 3px 9px;
 }
 
 .select-fly {
   font: inherit;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #0b1d33;
   background: #ffd166;
   border: none;
   border-radius: 999px;
-  padding: 13px 52px 11px;
+  padding: 14px 46px;
   cursor: pointer;
   box-shadow: 0 12px 30px rgba(4, 20, 40, 0.4);
   transition: transform 0.12s ease, filter 0.12s ease;
@@ -217,16 +207,10 @@
   filter: brightness(1.06);
 }
 
-.select-fly-sub {
-  font-size: 12px;
-  font-weight: 650;
-  opacity: 0.75;
-}
-
 .select-hint {
   margin: 0;
   font-size: 12.5px;
-  color: rgba(238, 245, 253, 0.75);
+  color: rgba(238, 245, 253, 0.72);
   text-align: center;
 }
 

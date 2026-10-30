@@ -32,7 +32,13 @@ import {
 } from "../src/game/aircraftConfigs";
 import type { InputManager as InputManagerType } from "../src/game/InputManager";
 import { createGroundSampler } from "../src/game/runway";
-import { modelSourceFor, normalizeProceduralModel } from "../src/game/aircraftModel";
+import {
+  getModelGroundProfile,
+  groundOffsetForPitch,
+  modelSourceFor,
+  normalizeProceduralModel,
+  type ModelGroundProfile,
+} from "../src/game/aircraftModel";
 import { createAirplane } from "../src/game/createAirplane";
 import { createFighterJet } from "../src/game/createFighter";
 import { TransformNode as TN } from "@babylonjs/core/Meshes/transformNode";
@@ -471,6 +477,50 @@ const step = (
     "M4 shipped model files are embedded-text glTF with geometry",
     bad.length === 0,
     bad.length ? `bad: ${bad.join(", ")}` : files.join(" + "),
+  );
+}
+
+{
+  // v0.21.0 ground-rotation clearance: the offset math that
+  // keeps the tail/stores out of the runway during rotation.
+  const pitch = (12 * Math.PI) / 180;
+  const cos = Math.cos(pitch), sin = Math.sin(pitch);
+  const mk = (points: Array<{ y: number; z: number }>): ModelGroundProfile => ({
+    points,
+    pivotZ: 1.0,
+    basePosition: new Vector3(0, 0, 0),
+  });
+  const gearOnly = mk([{ y: -2.25, z: 1.0 }]);
+  check(
+    "G1 zero pitch means zero offset",
+    groundOffsetForPitch(gearOnly, 0).dy === 0 && groundOffsetForPitch(gearOnly, 0).dz === 0,
+  );
+  const offGear = groundOffsetForPitch(gearOnly, pitch);
+  const gearFinalY = -2.25 * cos - 1.0 * sin + offGear.dy;
+  check(
+    "G2 the gear pivot point stays exactly on the contact plane",
+    Math.abs(gearFinalY + 2.25) < 1e-9,
+    `pivot lift ${offGear.dy.toFixed(3)} m, final y ${gearFinalY.toFixed(3)}`,
+  );
+  const tail = { y: -1.1, z: 7.2 };
+  const tailPenetrationAboutCentre = -2.25 - (tail.y * cos - tail.z * sin);
+  check(
+    "G4 gear-pivot lift is smaller than the centre-rotation tail drop",
+    offGear.dy < tailPenetrationAboutCentre,
+    `pivot lift ${offGear.dy.toFixed(2)} m vs tail drop ${tailPenetrationAboutCentre.toFixed(2)} m`,
+  );
+  const full = mk([
+    { y: -2.25, z: 1.0 },
+    tail,
+    { y: -2.2, z: 5.0 }, // a low underwing store, nearly at gear depth
+    { y: -0.9, z: -6.0 },
+  ]);
+  const offFull = groundOffsetForPitch(full, pitch);
+  const finalY = (p: { y: number; z: number }) => p.y * cos - p.z * sin + offFull.dy;
+  check(
+    "G3 no sampled point ends below the contact plane at 12° pitch",
+    full.points.every((p) => finalY(p) >= -2.25 - 1e-9),
+    `tail final y ${finalY(full.points[1]).toFixed(2)} · store ${finalY(full.points[2]).toFixed(2)}`,
   );
 }
 

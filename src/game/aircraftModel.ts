@@ -108,6 +108,108 @@ export function normalizeProceduralModel(
   const cx = (bounds.min.x + bounds.max.x) / 2;
   const cz = (bounds.min.z + bounds.max.z) / 2;
   container.position.set(-cx, -GEAR_DROP - bounds.min.y, -cz);
+  computeModelGroundProfile(container, aircraftRoot);
+}
+
+// --- Ground-rotation clearance (v0.21.0) -----------------------
+//
+// The physics pitches the aircraft about its root (the centre),
+// but a real aircraft rotates about its main gear. On the
+// fighter that difference buried the tail and its underwing
+// stores up to ~2.4 m INSIDE the runway during takeoff rotation
+// (measured in-game; Jeet reported "some part of plane goes
+// inside runway"). The fix is visual and exact: at fit time we
+// record the model's low sample points and its gear contact
+// patch; each grounded frame the model container is offset by
+// the translation that makes the pitch a rotation ABOUT THE
+// GEAR PIVOT, plus a residual lift so no sampled point can dip
+// below the gear contact plane. In the air the offset is zero.
+
+export interface ModelGroundProfile {
+  /** Low airframe sample points in aircraft-root space. */
+  points: Array<{ y: number; z: number }>;
+  /** Z of the main-gear contact patch (the rotation pivot). */
+  pivotZ: number;
+  /** The container's fitted position; offsets add onto it. */
+  basePosition: Vector3;
+}
+
+const groundProfiles = new WeakMap<TransformNode, ModelGroundProfile>();
+
+export function getModelGroundProfile(
+  container: TransformNode,
+): ModelGroundProfile | undefined {
+  return groundProfiles.get(container);
+}
+
+/**
+ * Sample the fitted model's low vertices (root space), find the
+ * gear contact patch, and stash the ground profile on the
+ * container. Call once, after the fit's final position is set.
+ */
+export function computeModelGroundProfile(
+  container: TransformNode,
+  aircraftRoot: TransformNode,
+): ModelGroundProfile {
+  container.computeWorldMatrix(true);
+  const sampled: Vector3[] = [];
+  for (const mesh of container.getChildMeshes(false)) {
+    const data = mesh.getVerticesData("position");
+    if (!data || data.length < 3) continue;
+    const wm = mesh.getWorldMatrix();
+    const total = Math.floor(data.length / 3);
+    const stride = Math.max(1, Math.floor(total / 1500));
+    const v = new Vector3(0, 0, 0);
+    for (let i = 0; i < total; i += stride) {
+      v.set(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
+      sampled.push(toRootSpace(Vector3.TransformCoordinates(v, wm), aircraftRoot));
+    }
+  }
+  let minY = Infinity;
+  for (const p of sampled) if (p.y < minY) minY = p.y;
+  if (!isFinite(minY)) minY = -GEAR_DROP;
+  // Contact patch: the lowest points are the gear/stores line.
+  const patch = sampled.filter((p) => p.y <= minY + 0.3);
+  const pivotZ =
+    patch.length > 0 ? patch.reduce((s, p) => s + p.z, 0) / patch.length : 0;
+  const low = sampled.filter((p) => p.y <= minY + 1.6);
+  const stride = Math.max(1, Math.floor(low.length / 500));
+  const points: Array<{ y: number; z: number }> = [];
+  for (let i = 0; i < low.length; i += stride) points.push({ y: low[i].y, z: low[i].z });
+  const profile: ModelGroundProfile = {
+    points,
+    pivotZ,
+    basePosition: container.position.clone(),
+  };
+  groundProfiles.set(container, profile);
+  return profile;
+}
+
+/**
+ * The container offset (root space) that turns a pitch about
+ * the root into a rotation about the gear pivot, with a
+ * residual lift guaranteeing no sampled point ends below the
+ * gear contact plane (−GEAR_DROP). Pure — unit-tested.
+ */
+export function groundOffsetForPitch(
+  profile: ModelGroundProfile,
+  pitchRad: number,
+): { dy: number; dz: number } {
+  const cos = Math.cos(pitchRad);
+  const sin = Math.sin(pitchRad);
+  const py = -GEAR_DROP;
+  const pz = profile.pivotZ;
+  const ry = py * cos - pz * sin;
+  const rz = py * sin + pz * cos;
+  let dy = py - ry;
+  const dz = pz - rz;
+  let minY = Infinity;
+  for (const p of profile.points) {
+    const y = p.y * cos - p.z * sin + dy;
+    if (y < minY) minY = y;
+  }
+  if (isFinite(minY) && minY < py) dy += py - minY;
+  return { dy, dz };
 }
 
 export async function loadAircraftModel(
@@ -204,6 +306,7 @@ export async function loadAircraftModel(
     const cx = (bounds.min.x + bounds.max.x) / 2;
     const cz = (bounds.min.z + bounds.max.z) / 2;
     container.position.set(-cx, -GEAR_DROP - bounds.min.y, -cz);
+    computeModelGroundProfile(container, aircraftRoot);
 
     // Verify the fit before showing it: the measured nose, pushed
     // through the container's transform, must point along -Z in

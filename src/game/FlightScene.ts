@@ -14,7 +14,13 @@ import {
   type CheckpointMarkerHandle,
 } from "./checkpointMarkers";
 import type { CheckpointVisual } from "./missions";
-import { loadAircraftModel, modelSourceFor, normalizeProceduralModel } from "./aircraftModel";
+import {
+  getModelGroundProfile,
+  groundOffsetForPitch,
+  loadAircraftModel,
+  modelSourceFor,
+  normalizeProceduralModel,
+} from "./aircraftModel";
 import { createFighterJet } from "./createFighter";
 import {
   aircraftVariantById,
@@ -24,6 +30,7 @@ import {
 import { getAircraftConfig, type AircraftConfig } from "./aircraftConfigs";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
+import { heliObstacles, loadHelicopters } from "./createHelicopters";
 import { createIsland } from "./createIsland";
 import { InputManager } from "./InputManager";
 import { createGroundSampler } from "./runway";
@@ -189,6 +196,8 @@ export class FlightScene {
   private readonly _orbitVec = new Vector3();
   private dragLookDispose: (() => void) | null = null;
   private obstacleField: ObstacleField | null = null;
+  /** The fitted model container ("aircraft-model"), once known. */
+  private modelContainer: TransformNode | null = null;
   // Phase 13 explosion state
   private wasCrashed = false;
   private shakeTime = 0;
@@ -401,6 +410,7 @@ export class FlightScene {
     if (this.shakeTime > 0) this.shakeTime = Math.max(0, this.shakeTime - frameDt);
     this.updateExplosionFx(frameDt);
 
+    this.updateModelGroundClearance(frameDt);
     this.updateChaseCamera(frameDt);
 
     this.telemetryTimer += frameDt;
@@ -561,6 +571,38 @@ export class FlightScene {
     }
   }
 
+  /** Currently applied ground-clearance offset (damped). */
+  private groundOffsetDy = 0;
+  private groundOffsetDz = 0;
+
+  /**
+   * v0.21.0: while grounded, offset the fitted model so its
+   * pitch reads as a rotation about the main gear instead of
+   * the centre — otherwise the tail/stores swing below the
+   * runway during takeoff rotation (see aircraftModel's
+   * ModelGroundProfile). The offset is damped both ways so
+   * liftoff never pops the model back down in one frame.
+   */
+  private updateModelGroundClearance(frameDt: number): void {
+    const container = this.modelContainer;
+    if (!container) return;
+    const profile = getModelGroundProfile(container);
+    if (!profile) return;
+    const state = this.controller.getState();
+    const target =
+      state.phase === "ground"
+        ? groundOffsetForPitch(profile, (state.pitchDeg * Math.PI) / 180)
+        : { dy: 0, dz: 0 };
+    const k = Math.min(1, frameDt * 7);
+    this.groundOffsetDy += (target.dy - this.groundOffsetDy) * k;
+    this.groundOffsetDz += (target.dz - this.groundOffsetDz) * k;
+    container.position.set(
+      profile.basePosition.x,
+      profile.basePosition.y + this.groundOffsetDy,
+      profile.basePosition.z + this.groundOffsetDz,
+    );
+  }
+
   private updateChaseCamera(dt: number): void {
     this.computeChasePose(this._desiredPos, this._desiredTarget);
     const mode = this.cameraMode;
@@ -646,8 +688,16 @@ export class FlightScene {
     const airport = createAirport(this.scene);
     // Phase 13: every solid thing the builders recorded becomes
     // collidable — buildings, tanks, trees, houses, lighthouse.
-    this.obstacleField = new ObstacleField([...airport.obstacles, ...island.obstacles]);
+    this.obstacleField = new ObstacleField([
+      ...airport.obstacles,
+      ...island.obstacles,
+      ...heliObstacles(),
+    ]);
     for (const mesh of airport.shadowCasters) shadows.addShadowCaster(mesh);
+    // Parked helicopters on the apron (v0.21.0): collision boxes
+    // are already in the field above; the models stream in async
+    // and pop onto their spots when ready.
+    void loadHelicopters(this.scene, (mesh) => shadows.addShadowCaster(mesh));
 
     // Multi-aircraft Phase 4: the visual comes from the active
     // config — a supplied glTF, a built-in procedural model, or
@@ -665,6 +715,7 @@ export class FlightScene {
         modelSource.builder === "fighter" ? createFighterJet(this.scene) : createAirplane(this.scene);
       inner.parent = container;
       normalizeProceduralModel(container, airplane, 11 * this.aircraftConfig.scale);
+      this.modelContainer = container;
       airplane.position.copyFrom(AIRCRAFT_START);
       airplane.getChildMeshes().forEach((mesh) => {
         mesh.receiveShadows = true;
@@ -705,7 +756,13 @@ export class FlightScene {
       (loaded) => {
         clearTimeout(revealTimer);
         this.modelKind = loaded ? "gltf" : "placeholder";
-        if (loaded) this.applyAircraftPaint();
+        if (loaded) {
+          this.modelContainer =
+            (airplane
+              .getChildren()
+              .find((c) => c.name === "aircraft-model") as TransformNode | undefined) ?? null;
+          this.applyAircraftPaint();
+        }
         // The measured COCKPIT_MODEL re-seat belongs to the
         // Cesium Air cabin it was taken from (Phase 8). Other
         // glTF aircraft keep the cockpit pose their config

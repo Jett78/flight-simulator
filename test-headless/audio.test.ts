@@ -8,9 +8,11 @@
 import {
   ENGINE_PROFILES,
   SoundEngine,
+  chopRateFor,
   engineFreqFor,
   engineGainFor,
   engineProfileFor,
+  roarLevelFor,
 } from "../src/game/audio";
 
 let failures = 0;
@@ -166,8 +168,9 @@ check(
     `prop ${engineFreqFor(1, 100, prop).toFixed(0)} · jet ${engineFreqFor(1, 100, jet).toFixed(0)} · fighter ${engineFreqFor(1, 100, ftr).toFixed(0)}`,
   );
   check(
-    "P3 voices differ in character (jet sine whine vs prop saw)",
-    jet.oscAType === "sine" && prop.oscAType === "sawtooth" && ftr.oscAType === "sawtooth",
+    "P3 jets share the turbine family, prop is the odd saw out",
+    jet.oscAType === "sine" && ftr.oscAType === "sine" && ftr.oscBType === "triangle" &&
+      prop.oscAType === "sawtooth",
   );
   check(
     "P4 spool feel: jet tau slowest, prop snappiest",
@@ -185,6 +188,17 @@ check(
   engine.setEngineKind("prop");
   check("P6 setEngineKind cycles safely pre-unlock", true);
   engine.dispose();
+  check(
+    "P7 only the prop has the putter chop, and it speeds up with power",
+    prop.chopDepth >= 0.4 && jet.chopDepth === 0 && ftr.chopDepth === 0 &&
+      chopRateFor(1, prop) > chopRateFor(0, prop) && chopRateFor(0, prop) >= 5,
+    `chop ${chopRateFor(0, prop)}->${chopRateFor(1, prop)} Hz, depth ${prop.chopDepth}`,
+  );
+  check(
+    "P8 exhaust roar: fighter loudest, then jet, prop none",
+    ftr.roarGain > jet.roarGain && jet.roarGain > 0 && prop.roarGain === 0 &&
+      roarLevelFor(0, ftr) === 0 && roarLevelFor(1, ftr) === ftr.roarGain,
+  );
 }
 
 console.log(failures === 0 ? "ALL AUDIO TESTS PASSED" : `${failures} FAILURES`);

@@ -48,11 +48,15 @@ export function saveAudioPrefs(prefs: AudioPrefs): void {
 // --- Pure level mappings (unit-tested headlessly) ---------------------
 
 /**
- * Engine sound profiles — one voice per aircraft type (Jeet:
- * "change the sounds according to the aircraft"). The prop
- * profile is the original Phase 10 sound, value for value; the
- * jet is a smoother, higher turbine whine that spools slowly;
- * the fighter is that whine's louder, harsher, eager cousin.
+ * Engine sound profiles — one voice per aircraft type, tuned to
+ * sound like the real thing (Jeet, v0.21.0):
+ * - prop: a piston propeller — low saw growl PLUS a "chop" LFO
+ *   that pulses the volume at blade-pass rate, the putter you
+ *   hear from a real prop plane.
+ * - jet: a smooth turbine whine over a bed of exhaust roar
+ *   (looped filtered noise).
+ * - fighter: the same jet family as the airliner — real fighter
+ *   jets ARE jets — but higher, louder and with twice the roar.
  */
 export type EngineSoundKind = "prop" | "jet" | "fighter";
 
@@ -73,6 +77,15 @@ export interface EngineProfile {
   gainThrottle: number;
   /** Smoothing time constant — jets lag, the fighter snaps. */
   tau: number;
+  /** Volume "chop" LFO (the propeller putter): rate at idle,
+   *  added rate at full throttle, depth 0..1 of the engine gain. */
+  chopRateBase: number;
+  chopRateThrottle: number;
+  chopDepth: number;
+  /** Continuous exhaust roar (filtered noise) level at full
+   *  throttle, and its lowpass cutoff. 0 = no roar layer. */
+  roarGain: number;
+  roarFilterFreq: number;
 }
 
 export const ENGINE_PROFILES: Record<EngineSoundKind, EngineProfile> = {
@@ -91,6 +104,11 @@ export const ENGINE_PROFILES: Record<EngineSoundKind, EngineProfile> = {
     gainBase: 0.015,
     gainThrottle: 0.11,
     tau: 0.09,
+    chopRateBase: 7,
+    chopRateThrottle: 17,
+    chopDepth: 0.55,
+    roarGain: 0,
+    roarFilterFreq: 400,
   },
   jet: {
     oscAType: "sine",
@@ -107,22 +125,32 @@ export const ENGINE_PROFILES: Record<EngineSoundKind, EngineProfile> = {
     gainBase: 0.01,
     gainThrottle: 0.075,
     tau: 0.28,
+    chopRateBase: 0,
+    chopRateThrottle: 0,
+    chopDepth: 0,
+    roarGain: 0.05,
+    roarFilterFreq: 750,
   },
   fighter: {
-    oscAType: "sawtooth",
-    oscBType: "square",
-    oscBRatio: 1.99,
-    oscBOffset: 8,
-    baseFreq: 190,
-    throttleFreq: 340,
-    speedFreq: 1.4,
-    speedCap: 140,
-    filterBase: 420,
-    filterThrottle: 2100,
-    filterQ: 1.6,
-    gainBase: 0.014,
-    gainThrottle: 0.105,
-    tau: 0.13,
+    oscAType: "sine",
+    oscBType: "triangle",
+    oscBRatio: 2.4,
+    oscBOffset: 10,
+    baseFreq: 170,
+    throttleFreq: 400,
+    speedFreq: 1.7,
+    speedCap: 160,
+    filterBase: 600,
+    filterThrottle: 2400,
+    filterQ: 2.2,
+    gainBase: 0.012,
+    gainThrottle: 0.095,
+    tau: 0.16,
+    chopRateBase: 0,
+    chopRateThrottle: 0,
+    chopDepth: 0,
+    roarGain: 0.1,
+    roarFilterFreq: 1150,
   },
 };
 
@@ -155,6 +183,24 @@ export function engineFreqFor(
   );
 }
 
+/** Propeller chop rate (Hz): the putter speeds up with power. */
+export function chopRateFor(
+  throttle: number,
+  profile: EngineProfile = ENGINE_PROFILES.prop,
+): number {
+  const t = clamp01(throttle);
+  return profile.chopRateBase + t * profile.chopRateThrottle;
+}
+
+/** Exhaust roar level: silent at idle, full bed at full power. */
+export function roarLevelFor(
+  throttle: number,
+  profile: EngineProfile = ENGINE_PROFILES.prop,
+): number {
+  const t = clamp01(throttle);
+  return profile.roarGain * t;
+}
+
 // --- Engine ------------------------------------------------------------
 
 interface FlightSoundState {
@@ -180,6 +226,10 @@ export class SoundEngine {
   private engineOscA: OscillatorNode | null = null;
   private engineOscB: OscillatorNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
+  private chopOsc: OscillatorNode | null = null;
+  private chopGain: GainNode | null = null;
+  private roarFilter: BiquadFilterNode | null = null;
+  private roarGain: GainNode | null = null;
   // Kept for the one-shot stingers (takeoff/touchdown/crash
   // bursts). The continuous wind layer was removed in 0.12.1 at
   // Jeet's request — no wind sound in flight any more.
@@ -210,6 +260,7 @@ export class SoundEngine {
     if (this.engineOscA) this.engineOscA.type = this.profile.oscAType;
     if (this.engineOscB) this.engineOscB.type = this.profile.oscBType;
     if (this.engineFilter) this.engineFilter.Q.value = this.profile.filterQ;
+    if (this.roarFilter) this.roarFilter.frequency.value = this.profile.roarFilterFreq;
   }
 
   /** Create/resume the context. Call ONLY from a user gesture. */
@@ -222,6 +273,13 @@ export class SoundEngine {
       this.master = ctx.createGain();
       this.master.gain.value = this.prefs.muted ? 0 : this.prefs.volume;
       this.master.connect(ctx.destination);
+
+      // Shared white-noise buffer (one-shot stingers + the
+      // continuous exhaust-roar layer below).
+      const len = ctx.sampleRate * 2;
+      this.noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
 
       // Engine: two profile oscillators -> lowpass -> gain.
       this.engineFilter = ctx.createBiquadFilter();
@@ -244,11 +302,31 @@ export class SoundEngine {
       this.engineOscA.start();
       this.engineOscB.start();
 
-      // Shared white-noise buffer for the one-shot stingers.
-      const len = ctx.sampleRate * 2;
-      this.noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
-      const data = this.noiseBuffer.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      // Propeller chop: an LFO pulsing the engine gain (the
+      // putter). Depth/rate come from the profile — 0 for jets.
+      this.chopOsc = ctx.createOscillator();
+      this.chopOsc.type = "sine";
+      this.chopOsc.frequency.value = this.profile.chopRateBase;
+      this.chopGain = ctx.createGain();
+      this.chopGain.gain.value = 0;
+      this.chopOsc.connect(this.chopGain);
+      this.chopGain.connect(this.engineGain.gain);
+      this.chopOsc.start();
+
+      // Exhaust roar: looped noise through a lowpass — the bed
+      // under the jet whine. Level 0 for the propeller.
+      const roarSource = ctx.createBufferSource();
+      roarSource.buffer = this.noiseBuffer;
+      roarSource.loop = true;
+      this.roarFilter = ctx.createBiquadFilter();
+      this.roarFilter.type = "lowpass";
+      this.roarFilter.frequency.value = this.profile.roarFilterFreq;
+      this.roarGain = ctx.createGain();
+      this.roarGain.gain.value = 0;
+      roarSource.connect(this.roarFilter);
+      this.roarFilter.connect(this.roarGain);
+      this.roarGain.connect(this.master);
+      roarSource.start();
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
   }
@@ -288,6 +366,15 @@ export class SoundEngine {
         t,
         p.tau,
       );
+    }
+    if (this.chopOsc && this.chopGain) {
+      this.chopOsc.frequency.setTargetAtTime(chopRateFor(state.throttle, p), t, p.tau);
+      this.chopGain.gain.setTargetAtTime(p.chopDepth * engineTarget, t, p.tau);
+    }
+    if (this.roarGain) {
+      const roarTarget =
+        active && !state.crashed ? roarLevelFor(state.throttle, p) : 0;
+      this.roarGain.gain.setTargetAtTime(roarTarget, t, p.tau);
     }
   }
 

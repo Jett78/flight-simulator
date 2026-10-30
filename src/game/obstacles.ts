@@ -74,6 +74,7 @@ export function obstacleLabel(name: string): string {
   if (name.startsWith("tower")) return "the control tower";
   if (name.startsWith("office")) return "the office block";
   if (name.startsWith("house")) return "a village house";
+  if (name.startsWith("helicopter")) return "a helicopter";
   if (name.startsWith("lighthouse")) return "the lighthouse";
   return "a building";
 }
