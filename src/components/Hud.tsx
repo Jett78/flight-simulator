@@ -600,7 +600,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 21 · SOUND, UI PHASE 20 · NEW JET MODEL HELIS</div>
+        <div className="hud-badge">PHASE 22 · BIGGER AIRPORT</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
