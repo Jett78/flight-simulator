@@ -131,6 +131,14 @@ function applyCameraConfig(cfg: AircraftConfig): void {
   set("Chase", cfg.camera.chase);
   set("Chase far", cfg.camera.chaseFar);
   set("Cockpit", cfg.camera.cockpit);
+  // Phase 5: the chase modes also take the aircraft's follow
+  // damping (the cockpit keeps its rigid 40/40 for everyone).
+  for (const name of ["Chase", "Chase far"]) {
+    const mode = CAMERA_MODES.find((m) => m.name === name);
+    if (!mode) continue;
+    mode.posDamp = cfg.camera.followPosDamp;
+    mode.targetDamp = cfg.camera.followTargetDamp;
+  }
 }
 
 /**
@@ -266,13 +274,14 @@ export class FlightScene {
         reset: () => this.resetAircraft(),
         controller: this.controller,
         model: () => ({ kind: this.modelKind, id: this.aircraftConfig.id }),
+        camera: () => ({ fov: this.camera.fov, mode: this.cameraMode.name }),
       };
     }
 
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
     this.camera.minZ = 0.1;
     this.camera.maxZ = 8000; // island + sky dome (radius 6300) in view
-    this.camera.fov = 0.82;
+    this.camera.fov = this.aircraftConfig.camera.fov; // Phase 5: per-aircraft base FOV
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
     this.attachDragLook();
 
@@ -483,6 +492,16 @@ export class FlightScene {
   }
 
   /** C: cycle Chase -> Chase far -> Cockpit -> Chase ... */
+  /**
+   * Phase 5: fire the mode callback with the CURRENT mode. The
+   * host calls this right after wiring the callback — a fresh
+   * scene starts in Chase, and without the sync the HUD chip
+   * kept showing the previous aircraft's last mode.
+   */
+  reportCameraMode(): void {
+    this.onCameraModeChange?.(this.cameraMode.name);
+  }
+
   cycleCameraMode(): void {
     const previous = this.cameraMode.name;
     this.cameraModeIndex = (this.cameraModeIndex + 1) % CAMERA_MODES.length;
@@ -550,6 +569,24 @@ export class FlightScene {
     Vector3.LerpToRef(this.camera.position, this._desiredPos, posAlpha, this.camera.position);
     Vector3.LerpToRef(this.smoothedTarget, this._desiredTarget, targetAlpha, this.smoothedTarget);
     this.camera.setTarget(this.smoothedTarget);
+    // Phase 5: speed FOV. The chase modes widen smoothly toward
+    // base + boost × (airspeed / maxSpeed) as the aircraft speeds
+    // up — the sense of speed is aircraft-specific (a fighter at
+    // full chat stretches the view far more than the prop). The
+    // cockpit keeps the base FOV. Damped at 2.2/s so it breathes
+    // rather than pops, including across mode switches.
+    {
+      const cam = this.aircraftConfig.camera;
+      const speedFrac = clampNum(
+        this.controller.getState().airspeed / this.aircraftConfig.maxSpeed,
+        0,
+        1,
+      );
+      const targetFov =
+        mode.name === "Cockpit" ? cam.fov : cam.fov + cam.fovBoost * speedFrac;
+      const fovAlpha = 1 - Math.exp(-2.2 * dt);
+      this.camera.fov += (targetFov - this.camera.fov) * fovAlpha;
+    }
     if (this.shakeTime > 0) {
       const a = 0.55 * (this.shakeTime / 0.7);
       this.camera.position.x += (Math.random() * 2 - 1) * a;
@@ -566,6 +603,9 @@ export class FlightScene {
     this.camera.position.copyFrom(this._desiredPos);
     this.smoothedTarget.copyFrom(this._desiredTarget);
     this.camera.setTarget(this.smoothedTarget);
+    // Phase 5: a view reset also re-bases the FOV (no leftover
+    // speed stretch on the pad).
+    this.camera.fov = this.aircraftConfig.camera.fov;
   }
 
   private createLights(): ShadowGenerator {

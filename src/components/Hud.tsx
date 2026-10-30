@@ -20,6 +20,7 @@ import {
   loadAudioPrefs,
   saveAudioPrefs,
   type AudioPrefs,
+  type EngineSoundKind,
 } from "../game/audio";
 import "./Hud.css";
 
@@ -61,6 +62,14 @@ interface HudProps {
   aircraftMaxSpeedKmh: number;
   /** Phase 3: active aircraft's rotate speed (km/h) for the help tip. */
   rotateKmh: number;
+  /** Phase 5: category label for the title block ("Commercial jet"). */
+  aircraftCategoryLabel: string;
+  /** Phase 5: spec line for the title block — thrust (kN). */
+  aircraftThrustKn: number;
+  /** Phase 5: spec line for the title block — stall speed (km/h). */
+  aircraftStallKmh: number;
+  /** Per-aircraft engine sound (Jeet): the active aircraft's voice. */
+  engineKind: EngineSoundKind;
 }
 
 interface RunSummary {
@@ -152,6 +161,10 @@ export function Hud({
   onChangeAircraft,
   aircraftMaxSpeedKmh,
   rotateKmh,
+  aircraftCategoryLabel,
+  aircraftThrustKn,
+  aircraftStallKmh,
+  engineKind,
 }: HudProps) {
   const speedTapeMax = Math.max(500, Math.ceil(aircraftMaxSpeedKmh / 100) * 100);
   const speedLabels: number[] = [];
@@ -186,6 +199,12 @@ export function Hud({
     }
     return soundRef.current;
   };
+
+  // Per-aircraft engine voice: follow the active aircraft. The
+  // HUD remounts per flight, so this also covers the first pick.
+  useEffect(() => {
+    getSound().setEngineKind(engineKind);
+  }, [engineKind]);
 
   // Audio starts only after a real user gesture (autoplay policy):
   // the first pointer/key press unlocks the context; unlock() is
@@ -581,10 +600,19 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 18 · REAL AIRCRAFT MODELS</div>
+        <div className="hud-badge">PHASE 19 · CAMERA, HUD & SOUND</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
+        </div>
+        {/* Phase 5: aircraft-specific title presentation — the
+            layout stays put, the labels follow the aircraft. */}
+        <div className="hud-aircraft-line">
+          {aircraftName} · {aircraftCategoryLabel}
+        </div>
+        <div className="hud-specs-line">
+          Max {aircraftMaxSpeedKmh} km/h · {aircraftThrustKn} kN thrust · Stall{" "}
+          {aircraftStallKmh} km/h
         </div>
       </header>
 

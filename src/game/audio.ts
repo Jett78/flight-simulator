@@ -47,16 +47,112 @@ export function saveAudioPrefs(prefs: AudioPrefs): void {
 
 // --- Pure level mappings (unit-tested headlessly) ---------------------
 
+/**
+ * Engine sound profiles — one voice per aircraft type (Jeet:
+ * "change the sounds according to the aircraft"). The prop
+ * profile is the original Phase 10 sound, value for value; the
+ * jet is a smoother, higher turbine whine that spools slowly;
+ * the fighter is that whine's louder, harsher, eager cousin.
+ */
+export type EngineSoundKind = "prop" | "jet" | "fighter";
+
+export interface EngineProfile {
+  oscAType: OscillatorType;
+  oscBType: OscillatorType;
+  /** oscB frequency = oscA frequency × ratio + offset (Hz). */
+  oscBRatio: number;
+  oscBOffset: number;
+  baseFreq: number;
+  throttleFreq: number;
+  speedFreq: number;
+  speedCap: number;
+  filterBase: number;
+  filterThrottle: number;
+  filterQ: number;
+  gainBase: number;
+  gainThrottle: number;
+  /** Smoothing time constant — jets lag, the fighter snaps. */
+  tau: number;
+}
+
+export const ENGINE_PROFILES: Record<EngineSoundKind, EngineProfile> = {
+  prop: {
+    oscAType: "sawtooth",
+    oscBType: "square",
+    oscBRatio: 1.5,
+    oscBOffset: 4,
+    baseFreq: 46,
+    throttleFreq: 64,
+    speedFreq: 0.35,
+    speedCap: 45,
+    filterBase: 260,
+    filterThrottle: 640,
+    filterQ: 2,
+    gainBase: 0.015,
+    gainThrottle: 0.11,
+    tau: 0.09,
+  },
+  jet: {
+    oscAType: "sine",
+    oscBType: "triangle",
+    oscBRatio: 2.02,
+    oscBOffset: 6,
+    baseFreq: 150,
+    throttleFreq: 260,
+    speedFreq: 1.1,
+    speedCap: 120,
+    filterBase: 500,
+    filterThrottle: 1500,
+    filterQ: 1.2,
+    gainBase: 0.01,
+    gainThrottle: 0.075,
+    tau: 0.28,
+  },
+  fighter: {
+    oscAType: "sawtooth",
+    oscBType: "square",
+    oscBRatio: 1.99,
+    oscBOffset: 8,
+    baseFreq: 190,
+    throttleFreq: 340,
+    speedFreq: 1.4,
+    speedCap: 140,
+    filterBase: 420,
+    filterThrottle: 2100,
+    filterQ: 1.6,
+    gainBase: 0.014,
+    gainThrottle: 0.105,
+    tau: 0.13,
+  },
+};
+
+export function engineProfileFor(kind: EngineSoundKind): EngineProfile {
+  return ENGINE_PROFILES[kind] ?? ENGINE_PROFILES.prop;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
 /** Engine loudness from the throttle setting (idle putter included). */
-export function engineGainFor(throttle: number): number {
-  const t = Math.min(1, Math.max(0, throttle));
-  return 0.015 + t * 0.11;
+export function engineGainFor(
+  throttle: number,
+  profile: EngineProfile = ENGINE_PROFILES.prop,
+): number {
+  const t = clamp01(throttle);
+  return profile.gainBase + t * profile.gainThrottle;
 }
 
 /** Engine oscillator frequency: rises with power and airflow. */
-export function engineFreqFor(throttle: number, airspeed: number): number {
-  const t = Math.min(1, Math.max(0, throttle));
-  return 46 + t * 64 + Math.min(Math.max(airspeed, 0), 45) * 0.35;
+export function engineFreqFor(
+  throttle: number,
+  airspeed: number,
+  profile: EngineProfile = ENGINE_PROFILES.prop,
+): number {
+  const t = clamp01(throttle);
+  return (
+    profile.baseFreq +
+    t * profile.throttleFreq +
+    Math.min(Math.max(airspeed, 0), profile.speedCap) * profile.speedFreq
+  );
 }
 
 // --- Engine ------------------------------------------------------------
@@ -89,6 +185,7 @@ export class SoundEngine {
   // Jeet's request — no wind sound in flight any more.
   private noiseBuffer: AudioBuffer | null = null;
   private prefs: AudioPrefs;
+  private profile: EngineProfile = ENGINE_PROFILES.prop;
   private readonly contextFactory: () => AudioContext | null;
 
   constructor(
@@ -103,6 +200,18 @@ export class SoundEngine {
     return this.ctx !== null;
   }
 
+  /**
+   * Switch the engine voice (per aircraft type). Safe before or
+   * after unlock: before, the graph is built with the profile;
+   * after, the live oscillators/filter adopt it immediately.
+   */
+  setEngineKind(kind: EngineSoundKind): void {
+    this.profile = engineProfileFor(kind);
+    if (this.engineOscA) this.engineOscA.type = this.profile.oscAType;
+    if (this.engineOscB) this.engineOscB.type = this.profile.oscBType;
+    if (this.engineFilter) this.engineFilter.Q.value = this.profile.filterQ;
+  }
+
   /** Create/resume the context. Call ONLY from a user gesture. */
   unlock(): void {
     if (!this.ctx) {
@@ -114,22 +223,23 @@ export class SoundEngine {
       this.master.gain.value = this.prefs.muted ? 0 : this.prefs.volume;
       this.master.connect(ctx.destination);
 
-      // Engine: saw + square oscillators -> lowpass -> gain.
+      // Engine: two profile oscillators -> lowpass -> gain.
       this.engineFilter = ctx.createBiquadFilter();
       this.engineFilter.type = "lowpass";
       this.engineFilter.frequency.value = 320;
-      this.engineFilter.Q.value = 2;
+      this.engineFilter.Q.value = this.profile.filterQ;
       this.engineGain = ctx.createGain();
       this.engineGain.gain.value = 0;
       this.engineFilter.connect(this.engineGain);
       this.engineGain.connect(this.master);
       this.engineOscA = ctx.createOscillator();
-      this.engineOscA.type = "sawtooth";
-      this.engineOscA.frequency.value = 46;
+      this.engineOscA.type = this.profile.oscAType;
+      this.engineOscA.frequency.value = this.profile.baseFreq;
       this.engineOscA.connect(this.engineFilter);
       this.engineOscB = ctx.createOscillator();
-      this.engineOscB.type = "square";
-      this.engineOscB.frequency.value = 72;
+      this.engineOscB.type = this.profile.oscBType;
+      this.engineOscB.frequency.value =
+        this.profile.baseFreq * this.profile.oscBRatio + this.profile.oscBOffset;
       this.engineOscB.connect(this.engineFilter);
       this.engineOscA.start();
       this.engineOscB.start();
@@ -165,14 +275,19 @@ export class SoundEngine {
   update(state: FlightSoundState, active: boolean): void {
     if (!this.ctx || !this.engineGain) return;
     const t = this.ctx.currentTime;
+    const p = this.profile;
     const engineTarget =
-      active && !state.crashed ? engineGainFor(state.throttle) : 0;
-    this.engineGain.gain.setTargetAtTime(engineTarget, t, 0.09);
+      active && !state.crashed ? engineGainFor(state.throttle, p) : 0;
+    this.engineGain.gain.setTargetAtTime(engineTarget, t, p.tau);
     if (this.engineOscA && this.engineOscB && this.engineFilter) {
-      const f = engineFreqFor(state.throttle, state.airspeed);
-      this.engineOscA.frequency.setTargetAtTime(f, t, 0.09);
-      this.engineOscB.frequency.setTargetAtTime(f * 1.5 + 4, t, 0.09);
-      this.engineFilter.frequency.setTargetAtTime(260 + state.throttle * 640, t, 0.09);
+      const f = engineFreqFor(state.throttle, state.airspeed, p);
+      this.engineOscA.frequency.setTargetAtTime(f, t, p.tau);
+      this.engineOscB.frequency.setTargetAtTime(f * p.oscBRatio + p.oscBOffset, t, p.tau);
+      this.engineFilter.frequency.setTargetAtTime(
+        p.filterBase + state.throttle * p.filterThrottle,
+        t,
+        p.tau,
+      );
     }
   }
 

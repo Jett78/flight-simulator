@@ -438,7 +438,7 @@ const step = (
     "M1 model sources resolve per config (all three real glTF since Phase 5)",
     c.kind === "gltf" && j.kind === "gltf" && f.kind === "gltf" &&
       getAircraftConfig("skyliner-200").modelPath === "/models/boeing-747.gltf" &&
-      getAircraftConfig("skyliner-200").modelYawDeg === 164 &&
+      getAircraftConfig("skyliner-200").modelYawDeg === -16 &&
       getAircraftConfig("falcon-f1").modelPath === "/models/fighter-jet.gltf" &&
       getAircraftConfig("falcon-f1").modelYawDeg === 180,
     `cesium=${c.kind} · skyliner=${j.kind} · falcon=${f.kind}`,
@@ -526,6 +526,38 @@ const step = (
   check(
     "R4 registerAircraft adds a new aircraft; duplicate ids are rejected",
     listAircraft().length === before + 1 && getAircraftConfig("test-glider").name === "Test Glider" && dupThrew,
+  );
+}
+
+// ---------------------------------------------------------------------
+// Phase 5 — per-aircraft camera behaviour + HUD presentation data.
+// The feel lives in the config: follow damping and FOV per
+// aircraft, with the default keeping the legacy rig exactly.
+// ---------------------------------------------------------------------
+{
+  const d = getAircraftConfig(DEFAULT_AIRCRAFT_ID);
+  const jet = getAircraftConfig("skyliner-200");
+  const ftr = getAircraftConfig("falcon-f1");
+  check(
+    "C1 default camera feel == legacy (damps 3.4/5.5, fov 0.82)",
+    d.camera.followPosDamp === 3.4 &&
+      d.camera.followTargetDamp === 5.5 &&
+      d.camera.fov === 0.82,
+  );
+  check(
+    "C2 follow tightness orders fighter > prop > jet",
+    ftr.camera.followPosDamp > d.camera.followPosDamp &&
+      d.camera.followPosDamp > jet.camera.followPosDamp &&
+      ftr.camera.followTargetDamp > d.camera.followTargetDamp &&
+      d.camera.followTargetDamp > jet.camera.followTargetDamp,
+    `pos ${jet.camera.followPosDamp}/${d.camera.followPosDamp}/${ftr.camera.followPosDamp}`,
+  );
+  check(
+    "C3 speed-FOV boost orders fighter > jet > prop, all positive",
+    ftr.camera.fovBoost > jet.camera.fovBoost &&
+      jet.camera.fovBoost > d.camera.fovBoost &&
+      d.camera.fovBoost > 0,
+    `boost ${d.camera.fovBoost}/${jet.camera.fovBoost}/${ftr.camera.fovBoost}`,
   );
 }
 

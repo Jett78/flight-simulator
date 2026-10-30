@@ -6,9 +6,11 @@
  * Run: npx tsx test-headless/audio.test.ts
  */
 import {
+  ENGINE_PROFILES,
   SoundEngine,
   engineFreqFor,
   engineGainFor,
+  engineProfileFor,
 } from "../src/game/audio";
 
 let failures = 0;
@@ -142,6 +144,46 @@ check("A2 engine pitch rises with throttle",
   engine.crash();
   check("B9 all event sounds play without errors", true);
 
+  engine.dispose();
+}
+
+// --- Per-aircraft engine profiles --------------------------------------
+// The default (no profile argument) must stay the legacy prop
+// sound exactly — the profiles extend the mappings, never move
+// the baseline.
+check(
+  "P1 legacy defaults unchanged (freq 46 at idle, gain 0.015)",
+  engineFreqFor(0, 0) === 46 && engineGainFor(0) === 0.015,
+);
+{
+  const prop = ENGINE_PROFILES.prop;
+  const jet = ENGINE_PROFILES.jet;
+  const ftr = ENGINE_PROFILES.fighter;
+  check(
+    "P2 full-power pitch orders fighter > jet > prop",
+    engineFreqFor(1, 100, ftr) > engineFreqFor(1, 100, jet) &&
+      engineFreqFor(1, 100, jet) > engineFreqFor(1, 100, prop),
+    `prop ${engineFreqFor(1, 100, prop).toFixed(0)} · jet ${engineFreqFor(1, 100, jet).toFixed(0)} · fighter ${engineFreqFor(1, 100, ftr).toFixed(0)}`,
+  );
+  check(
+    "P3 voices differ in character (jet sine whine vs prop saw)",
+    jet.oscAType === "sine" && prop.oscAType === "sawtooth" && ftr.oscAType === "sawtooth",
+  );
+  check(
+    "P4 spool feel: jet tau slowest, prop snappiest",
+    jet.tau > ftr.tau && ftr.tau > prop.tau,
+    `tau ${prop.tau}/${ftr.tau}/${jet.tau}`,
+  );
+  check(
+    "P5 engineProfileFor falls back to prop on unknown kinds",
+    engineProfileFor("nope" as never) === prop,
+  );
+  // The live engine adopts a new voice without error.
+  const engine = new SoundEngine({ muted: false, volume: 0.8 }, () => null);
+  engine.setEngineKind("jet");
+  engine.setEngineKind("fighter");
+  engine.setEngineKind("prop");
+  check("P6 setEngineKind cycles safely pre-unlock", true);
   engine.dispose();
 }
 

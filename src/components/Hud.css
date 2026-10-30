@@ -60,6 +60,21 @@
   color: #7ee2a0;
 }
 
+/* Phase 5: aircraft line + specs in the title block. */
+.hud-aircraft-line {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8eef7;
+}
+
+.hud-specs-line {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(232, 238, 247, 0.62);
+  letter-spacing: 0.02em;
+}
+
 /* --- Actions + help (top-right) --- */
 .hud-topright {
   position: absolute;

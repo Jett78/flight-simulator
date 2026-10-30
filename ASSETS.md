@@ -45,9 +45,10 @@ external assets, no paid services, no runtime API calls.
 - **Format note:** same GLB → embedded-text glTF conversion as
   the Cesium Air above; the original binary is kept outside the
   repo. The file's nose points ~16° off its −Z axis, so the
-  config sets `modelYawDeg: 164` and the fit turns it to the
-  sim's −Z forward (measured from the geometry and verified by
-  an in-game yaw sweep).
+  config sets `modelYawDeg: -16` and the fit turns it to the
+  sim's −Z forward (verified by an in-game yaw A/B with the
+  tail fin nearest the chase camera; an earlier 164° value
+  rendered the jet backwards and was corrected).
 - **Changes made:** none to the model itself; the loader's
   measured fit scales it to the config's 28.6 m length and puts
   its underside on the gear contact.

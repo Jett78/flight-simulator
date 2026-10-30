@@ -3,10 +3,20 @@ import { Hud } from "./components/Hud";
 import { SceneCanvas } from "./components/SceneCanvas";
 import { AircraftSelect } from "./components/AircraftSelect";
 import {
+  AIRCRAFT_CATEGORY_LABELS,
   getAircraftConfig,
   loadAircraftChoiceId,
   saveAircraftChoiceId,
+  type AircraftCategory,
 } from "./game/aircraftConfigs";
+import type { EngineSoundKind } from "./game/audio";
+
+/** Per-aircraft engine voice, keyed by category. */
+const ENGINE_KIND_BY_CATEGORY: Record<AircraftCategory, EngineSoundKind> = {
+  propeller: "prop",
+  "commercial-jet": "jet",
+  fighter: "fighter",
+};
 import type { FlightState } from "./game/AircraftController";
 import type { FlightScene } from "./game/FlightScene";
 import type { CheckpointVisual } from "./game/missions";
@@ -49,6 +59,7 @@ export default function App() {
     sceneRef.current = scene;
     if (scene) {
       scene.onCameraModeChange = (name) => setCameraMode(name);
+      scene.reportCameraMode(); // sync the chip to the fresh scene's mode
       scene.onGamepadConnectionChange = (connected) => setGamepadConnected(connected);
       setAircraftVariantId(scene.getAircraftVariantId());
       setGamepadConnected(scene.isGamepadConnected());
@@ -128,6 +139,12 @@ export default function App() {
         onChangeAircraft={handleChangeAircraft}
         aircraftMaxSpeedKmh={Math.round(getAircraftConfig(aircraftId).maxSpeed * 3.6)}
         rotateKmh={Math.round(getAircraftConfig(aircraftId).stallSpeed * 1.2 * 3.6)}
+        aircraftCategoryLabel={
+          AIRCRAFT_CATEGORY_LABELS[getAircraftConfig(aircraftId).category]
+        }
+        aircraftThrustKn={Math.round(getAircraftConfig(aircraftId).thrust / 1000)}
+        aircraftStallKmh={Math.round(getAircraftConfig(aircraftId).stallSpeed * 3.6)}
+        engineKind={ENGINE_KIND_BY_CATEGORY[getAircraftConfig(aircraftId).category]}
       />
     </main>
   );

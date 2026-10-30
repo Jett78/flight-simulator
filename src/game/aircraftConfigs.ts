@@ -37,6 +37,22 @@ export interface AircraftCameraConfig {
   chaseFar: AircraftCameraPose;
   /** Placeholder-space cockpit eye point; the loaded model may re-seat it (Phase 8). */
   cockpit: AircraftCameraPose;
+  /**
+   * Phase 5: chase follow damping per aircraft (higher = the
+   * camera tracks tighter). Applied to the Chase and Chase far
+   * modes; the cockpit stays rigid (40/40) for every aircraft.
+   * The default aircraft carries the legacy 3.4 / 5.5 exactly.
+   */
+  followPosDamp: number;
+  followTargetDamp: number;
+  /** Phase 5: base field of view (radians) for this aircraft. */
+  fov: number;
+  /**
+   * Phase 5: extra FOV added at full speed (airspeed / maxSpeed)
+   * in the chase modes — the speed sensation. Damped in the
+   * scene so it never pops; the cockpit keeps the base FOV.
+   */
+  fovBoost: number;
 }
 
 export interface AircraftConfig {
@@ -203,6 +219,10 @@ registerAircraft({
     chase: { offset: [0, 4.4, 14], lookOffset: [0, 1.1, -8] },
     chaseFar: { offset: [0, 7.5, 27], lookOffset: [0, 1.2, -10] },
     cockpit: { offset: [0, 1.7, -4.8], lookOffset: [0, 1.15, -30] },
+    followPosDamp: 3.4,
+    followTargetDamp: 5.5,
+    fov: 0.82,
+    fovBoost: 0.05,
   },
 });
 
@@ -221,12 +241,16 @@ registerAircraft({
   // Real model (Phase 5): "Boeing 747" by Miha Lunar via Poly
   // Pizza, CC-BY 3.0 — see ASSETS.md. The file's nose points
   // ~16° off its -Z axis (measured from the geometry: fin
-  // centroid to nose tip), which Babylon's Z-flipping loader
-  // turns into a ~164° correction — verified by an in-game yaw
-  // sweep (164° = perfectly symmetric rear view). The
-  // procedural airliner remains the documented fallback shape.
+  // centroid to nose tip). The in-game correction is -16°:
+  // an earlier 164° value rendered the jet BACKWARDS (nose
+  // toward the chase camera) — the dead-ahead view was
+  // misread as a rear view during verification. -16° was
+  // confirmed by an in-game yaw A/B: tail fin and stabilizer
+  // large and nearest the camera, nose away down the runway.
+  // The procedural airliner remains the documented fallback
+  // shape.
   modelPath: "/models/boeing-747.gltf",
-  modelYawDeg: 164,
+  modelYawDeg: -16,
   proceduralModel: "airliner",
   mass: 19000,
   thrust: 128000,
@@ -256,6 +280,12 @@ registerAircraft({
     chase: { offset: [0, 8, 30], lookOffset: [0, 2, -16] },
     chaseFar: { offset: [0, 14, 55], lookOffset: [0, 2.5, -20] },
     cockpit: { offset: [0, 3.4, -9.6], lookOffset: [0, 2.3, -60] },
+    // Phase 5: a heavy jet wants a heavier camera — slower,
+    // smoother follow that lags a little in turns.
+    followPosDamp: 2.3,
+    followTargetDamp: 3.8,
+    fov: 0.84,
+    fovBoost: 0.06,
   },
 });
 
@@ -303,6 +333,12 @@ registerAircraft({
     chase: { offset: [0, 3.6, 12], lookOffset: [0, 0.9, -8] },
     chaseFar: { offset: [0, 6.5, 24], lookOffset: [0, 1.1, -10] },
     cockpit: { offset: [0, 1.9, -5.4], lookOffset: [0, 1.3, -30] },
+    // Phase 5: the fighter gets a tight, eager follow and the
+    // strongest speed-FOV — it should FEEL fast.
+    followPosDamp: 4.8,
+    followTargetDamp: 7.0,
+    fov: 0.88,
+    fovBoost: 0.17,
   },
 });
 
