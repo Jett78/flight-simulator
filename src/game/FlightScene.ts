@@ -666,7 +666,12 @@ export class FlightScene {
         clearTimeout(revealTimer);
         this.modelKind = loaded ? "gltf" : "placeholder";
         if (loaded) this.applyAircraftPaint();
-        if (loaded) {
+        // The measured COCKPIT_MODEL re-seat belongs to the
+        // Cesium Air cabin it was taken from (Phase 8). Other
+        // glTF aircraft keep the cockpit pose their config
+        // declares — the Cesium offsets would bury the camera
+        // inside a 747's upper deck.
+        if (loaded && this.aircraftConfig.id === "cesium-air") {
           const cockpit = CAMERA_MODES.find((m) => m.name === "Cockpit");
           if (cockpit) {
             cockpit.offset.copyFrom(COCKPIT_MODEL.offset);

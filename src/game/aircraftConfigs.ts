@@ -214,10 +214,19 @@ registerAircraft({
 // their thrust at speed via a gentler lapse than the prop's.
 registerAircraft({
   id: "skyliner-200",
-  name: "SkyLiner 200",
-  description: "Commercial passenger jet. Heavy, smooth and fast once it winds up — give it runway and time, and it rewards patience.",
+  name: "Boeing 747",
+  description: "The original jumbo jet — four engines and the famous upper-deck hump. Heavy, smooth and fast once it winds up: give it runway and time, and it rewards patience.",
   category: "commercial-jet",
   modelId: "skyliner-200",
+  // Real model (Phase 5): "Boeing 747" by Miha Lunar via Poly
+  // Pizza, CC-BY 3.0 — see ASSETS.md. The file's nose points
+  // ~16° off its -Z axis (measured from the geometry: fin
+  // centroid to nose tip), which Babylon's Z-flipping loader
+  // turns into a ~164° correction — verified by an in-game yaw
+  // sweep (164° = perfectly symmetric rear view). The
+  // procedural airliner remains the documented fallback shape.
+  modelPath: "/models/boeing-747.gltf",
+  modelYawDeg: 164,
   proceduralModel: "airliner",
   mass: 19000,
   thrust: 128000,
@@ -256,9 +265,15 @@ registerAircraft({
 registerAircraft({
   id: "falcon-f1",
   name: "Falcon F1",
-  description: "Fighter jet. Explosive thrust, razor controls, happiest at angles of attack that would terrify the SkyLiner.",
+  description: "Stealth fighter jet. Explosive thrust, razor controls, happiest at angles of attack that would terrify the 747.",
   category: "fighter",
   modelId: "falcon-f1",
+  // Real model (Phase 5): "Jet" stealth fighter by jeremy via
+  // Poly Pizza, CC-BY 3.0 — see ASSETS.md. The file's nose
+  // faces +Z, so the fit needs the 180° yaw correction. The
+  // procedural fighter remains the documented fallback shape.
+  modelPath: "/models/fighter-jet.gltf",
+  modelYawDeg: 180,
   proceduralModel: "fighter",
   mass: 5200,
   thrust: 54000,

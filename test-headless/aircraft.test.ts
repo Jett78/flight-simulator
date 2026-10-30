@@ -435,10 +435,42 @@ const step = (
   const j = src("skyliner-200");
   const f = src("falcon-f1");
   check(
-    "M1 model sources resolve per config (gltf / airliner / fighter)",
-    c.kind === "gltf" && j.kind === "procedural" && j.builder === "airliner" &&
-      f.kind === "procedural" && f.builder === "fighter",
-    `cesium=${c.kind} · skyliner=${j.kind}${j.kind === "procedural" ? ":" + j.builder : ""} · falcon=${f.kind}${f.kind === "procedural" ? ":" + f.builder : ""}`,
+    "M1 model sources resolve per config (all three real glTF since Phase 5)",
+    c.kind === "gltf" && j.kind === "gltf" && f.kind === "gltf" &&
+      getAircraftConfig("skyliner-200").modelPath === "/models/boeing-747.gltf" &&
+      getAircraftConfig("skyliner-200").modelYawDeg === 164 &&
+      getAircraftConfig("falcon-f1").modelPath === "/models/fighter-jet.gltf" &&
+      getAircraftConfig("falcon-f1").modelYawDeg === 180,
+    `cesium=${c.kind} · skyliner=${j.kind} · falcon=${f.kind}`,
+  );
+}
+
+{
+  // Phase 5: the shipped model files must exist, parse as glTF
+  // JSON, and carry their buffers as embedded data URIs (the
+  // repo path is text-only — a binary file here would mean the
+  // conversion step was skipped).
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const root = path.resolve(process.cwd(), "public/models");
+  const files = ["cesium-air.gltf", "boeing-747.gltf", "fighter-jet.gltf"];
+  const bad: string[] = [];
+  for (const f of files) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(root, f), "utf8")) as {
+        buffers?: { uri?: string }[];
+        meshes?: unknown[];
+      };
+      const embedded = (doc.buffers ?? []).every((b) => (b.uri ?? "").startsWith("data:"));
+      if (!embedded || !(doc.meshes?.length)) bad.push(f);
+    } catch {
+      bad.push(f);
+    }
+  }
+  check(
+    "M4 shipped model files are embedded-text glTF with geometry",
+    bad.length === 0,
+    bad.length ? `bad: ${bad.join(", ")}` : files.join(" + "),
   );
 }
 

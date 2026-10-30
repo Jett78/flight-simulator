@@ -1,6 +1,6 @@
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import type { AircraftConfig } from "./aircraftConfigs";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { Scene } from "@babylonjs/core/scene";
@@ -207,13 +207,20 @@ export async function loadAircraftModel(
 
     // Verify the fit before showing it: the measured nose, pushed
     // through the container's transform, must point along -Z in
-    // root space. (A warning only — the visual check is the judge.)
+    // root space — after undoing the INTENTIONAL extraYaw
+    // correction, which by design turns the file's forward away
+    // from -Z first (a warning only — the visual check is the
+    // judge; without the undo, every yaw-corrected model warned).
     {
       const inv = aircraftRoot.getWorldMatrix().clone();
       inv.invert();
       const world = container.getWorldMatrix().multiply(inv);
       const fitted = Vector3.TransformNormal(noseDir, world).normalize();
-      if (Math.abs(fitted.z + 1) > 0.2 || Math.abs(fitted.x) > 0.2) {
+      const uncorrected = Vector3.TransformNormal(
+        fitted,
+        Matrix.RotationY((-extraYawDeg * Math.PI) / 180),
+      );
+      if (Math.abs(uncorrected.z + 1) > 0.2 || Math.abs(uncorrected.x) > 0.2) {
         console.warn("Aircraft model fit looks wrong:", fitted.toString());
       }
     }
