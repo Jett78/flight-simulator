@@ -4,6 +4,7 @@ import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { InputManager } from "./InputManager";
 import { AIRCRAFT_RADIUS, CONTACT_SKIN, OBSTACLE_CRASH_SPEED, type ObstacleField } from "./obstacles";
 import { DEFAULT_VARIANT, type AircraftVariant } from "./aircraftVariants";
+import { DEFAULT_AIRCRAFT_CONFIG, type AircraftConfig } from "./aircraftConfigs";
 
 /**
  * Simplified, semi-realistic flight model (Phase 4).
@@ -45,26 +46,14 @@ import { DEFAULT_VARIANT, type AircraftVariant } from "./aircraftVariants";
  * never touches the camera, the scene, or rendering.
  */
 
-// --- Airframe / environment constants (tuned for a ~180m runway) ---
-// Trainer-like numbers: thrust/weight ~0.48 with a speed lapse, and a
-// big wing (low wing loading) so rotation happens at ~34 m/s. A T/W
-// near 1.0 (first tuning pass) made the aircraft climb almost
-// vertically hands-off — physically consistent, wrong game feel.
-const MASS = 4600; // kg
-const MAX_THRUST = 21000; // N at 100% throttle, static (sea level, v=0)
-const THRUST_LAPSE_SPEED = 170; // thrust fades linearly with speed...
-const THRUST_LAPSE_FLOOR = 0.3; // ...down to this fraction at high speed
-const WING_AREA = 92; // m^2 (big wing: rotation ~28 m/s, liftoff roll ~100 m)
+// --- Environment constants ---
+// Per-AIRCRAFT numbers (mass, thrust, wing, drag, rates, stall
+// angles, speed cap) live in aircraftConfigs.ts since the
+// multi-aircraft config system — the controller reads them from
+// the active AircraftConfig. What remains here is shared by
+// every aircraft: the world and the control feel.
 const AIR_DENSITY = 1.225; // kg/m^3, sea level
 const GRAVITY = 9.81; // m/s^2
-const CL_ALPHA = 5.7; // lift coefficient per radian of AoA
-const CL_MAX = 1.4;
-const CL_MIN = -1.1;
-const STALL_POS_DEG = 15;
-const STALL_NEG_DEG = 12;
-const CD_PARASITE = 0.05;
-const CD_INDUCED_K = 0.05;
-const CD_STALL = 0.3;
 const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch trim below
 
 // --- Control constants ---
@@ -75,9 +64,6 @@ const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch tr
 const THROTTLE_UP_RATE = 0.6; // per second while Shift held
 const THROTTLE_DOWN_RATE = 1.2; // per second while Space held (fast cut)
 const THROTTLE_DECAY_RATE = 0.5; // per second when no throttle key held
-const PITCH_RATE = 0.8; // rad/s at full deflection & full effectiveness
-const ROLL_RATE = 1.6; // rad/s
-const YAW_RATE = 0.5; // rad/s
 const INPUT_RESPONSE = 7; // 1/s — smoothing of control deflections
 
 // --- World limits ---
@@ -97,7 +83,6 @@ const TERRAIN_SLOPE_CRASH_DEG = 15; // hillside steeper than this = impact
 const TERRAIN_SPEED_CRASH = 45; // m/s — too fast to roll out on rough ground
 const BUMP_MAX_AIR_TIME = 0.4; // s — shorter airborne gaps are ground roll, not landings
 const CEILING_Y = 500;
-const MAX_SPEED = 140; // m/s absolute cap (numeric safety net)
 
 const AXIS_RIGHT = new Vector3(1, 0, 0);
 const AXIS_UP = new Vector3(0, 1, 0);
@@ -213,6 +198,18 @@ export class AircraftController {
   private readonly obstacles: ObstacleField | null;
   /** Phase 14: active aircraft variant (flight-model profile). */
   private variant: AircraftVariant;
+  /** Multi-aircraft Phase 1: active aircraft configuration. All
+   * per-aircraft physics numbers come from here (see
+   * aircraftConfigs.ts); the Phase 14 variant multiplies them. */
+  private config: AircraftConfig;
+
+  setConfig(config: AircraftConfig): void {
+    this.config = config;
+  }
+
+  getConfig(): AircraftConfig {
+    return this.config;
+  }
   private readonly _axes = { pitch: 0, roll: 0, yaw: 0 };
 
   setVariant(variant: AircraftVariant): void {
@@ -261,11 +258,13 @@ export class AircraftController {
     groundSampler?: GroundSampler,
     obstacles?: ObstacleField | null,
     variant?: AircraftVariant,
+    config?: AircraftConfig,
   ) {
     this.aircraft = aircraft;
     this.startPosition = startPosition.clone();
     this.obstacles = obstacles ?? null;
     this.variant = variant ?? DEFAULT_VARIANT;
+    this.config = config ?? DEFAULT_AIRCRAFT_CONFIG;
     // Default: the pre-Phase-7 flat world (runway datum everywhere).
     this.groundSampler =
       groundSampler ??
@@ -335,7 +334,7 @@ export class AircraftController {
     // Spring-loaded throttle: Shift raises, Space cuts fast, and
     // with neither held the power decays to zero.
     if (input.isDown("ShiftLeft", "ShiftRight")) {
-      this.throttle = Math.min(1, this.throttle + THROTTLE_UP_RATE * dt);
+      this.throttle = Math.min(1, this.throttle + THROTTLE_UP_RATE * this.config.throttleResponse * dt);
     } else if (input.isDown("Space")) {
       this.throttle = Math.max(0, this.throttle - THROTTLE_DOWN_RATE * dt);
     } else {
@@ -371,13 +370,13 @@ export class AircraftController {
 
     // Lift coefficient: linear in AoA, clamped, then falls off post-stall
     // (Phase 14: variant shifts both stall angles — Trainer later/softer.)
-    const stallPosDeg = STALL_POS_DEG + this.variant.stallShiftDeg;
-    const stallNegDeg = STALL_NEG_DEG + this.variant.stallShiftDeg;
-    let cl = clamp(CL_ALPHA * alphaRad, CL_MIN, CL_MAX);
+    const stallPosDeg = this.config.stallAnglePosDeg + this.variant.stallShiftDeg;
+    const stallNegDeg = this.config.stallAngleNegDeg + this.variant.stallShiftDeg;
+    let cl = clamp(this.config.liftSlope * alphaRad, this.config.clMin, this.config.clMax);
     if (alphaDeg > stallPosDeg) {
-      cl = Math.max(0.45, CL_MAX - (alphaDeg - stallPosDeg) * 0.09);
+      cl = Math.max(0.45, this.config.clMax - (alphaDeg - stallPosDeg) * 0.09);
     } else if (alphaDeg < -stallNegDeg) {
-      cl = -Math.max(0.45, -CL_MIN - (-alphaDeg - stallNegDeg) * 0.09);
+      cl = -Math.max(0.45, -this.config.clMin - (-alphaDeg - stallNegDeg) * 0.09);
     }
     const stallPos = clamp((alphaDeg - stallPosDeg) / 7, 0, 1);
     const stallNeg = clamp((-alphaDeg - stallNegDeg) / 7, 0, 1);
@@ -385,24 +384,27 @@ export class AircraftController {
     this._stallFactor = stallFactor;
 
     // Drag coefficient: parasite + induced + stall + high-speed rise
-    const dragRise = 0.25 * smoothstep((speed - 85) / 35);
+    const dragRise =
+      this.config.dragRiseAmount * smoothstep((speed - this.config.dragRiseStart) / this.config.dragRiseSpan);
     const cd =
-      (CD_PARASITE + CD_INDUCED_K * cl * cl) * this.variant.drag + stallFactor * CD_STALL + dragRise;
+      (this.config.dragParasite + this.config.dragInduced * cl * cl) * this.variant.drag +
+      stallFactor * this.config.dragStall +
+      dragRise;
 
     const dynamicPressure = 0.5 * AIR_DENSITY * speed * speed;
-    const lift = dynamicPressure * WING_AREA * cl;
-    const drag = dynamicPressure * WING_AREA * cd;
+    const lift = dynamicPressure * this.config.wingArea * cl;
+    const drag = dynamicPressure * this.config.wingArea * cd;
     // Engine thrust fades with airspeed (prop/jet lapse), floored so
     // the aircraft can still cruise at altitude speed.
-    const lapse = clamp(1 - speed / THRUST_LAPSE_SPEED, THRUST_LAPSE_FLOOR, 1);
-    const thrust = this.throttle * MAX_THRUST * this.variant.thrust * lapse;
+    const lapse = clamp(1 - speed / this.config.lapseSpeed, this.config.lapseFloor, 1);
+    const thrust = this.throttle * this.config.thrust * this.variant.thrust * lapse;
     this._lift = lift;
     this._drag = drag;
     this._thrust = thrust;
 
     // ---------- Forces -> velocity ----------
     this._forward.scaleToRef(thrust, this._force);
-    this._force.y -= MASS * GRAVITY;
+    this._force.y -= this.config.mass * GRAVITY;
     if (speed > 0.5) {
       // Lift direction: perpendicular to airflow, in the wing plane
       Vector3.CrossToRef(this._right, this._velDir, this._liftDir);
@@ -415,7 +417,7 @@ export class AircraftController {
       this._velDir.scaleToRef(-drag, this._tmp);
       this._force.addInPlace(this._tmp);
     }
-    this.velocity.addInPlace(this._force.scaleInPlace(dt / MASS));
+    this.velocity.addInPlace(this._force.scaleInPlace(dt / this.config.mass));
 
     // Sideslip damping: fuselage side-drag bleeds sideways velocity,
     // keeping velocity and orientation consistent. Kept moderate —
@@ -462,7 +464,7 @@ export class AircraftController {
 
     // Absolute speed cap (drag rise should hold it near ~112 m/s anyway)
     const newSpeed = this.velocity.length();
-    const speedCap = MAX_SPEED * this.variant.topSpeed;
+    const speedCap = this.config.maxSpeed * this.variant.topSpeed;
     if (newSpeed > speedCap) this.velocity.scaleInPlace(speedCap / newSpeed);
 
     // ---------- Obstacles: depenetration (0.13.2) ----------
@@ -586,11 +588,11 @@ export class AircraftController {
       // needs airflow. Roll/nose-down are clamped by the ground itself.
       const steer = clamp(speed / 5, 0, 1);
       if (this.yawInput !== 0) {
-        node.rotate(AXIS_UP, this.yawInput * YAW_RATE * this.variant.rates * 1.2 * steer * dt, Space.LOCAL);
+        node.rotate(AXIS_UP, this.yawInput * this.config.yawRate * this.variant.rates * 1.2 * steer * dt, Space.LOCAL);
       }
       if (this.pitchInput > 0) {
         const airflow = clamp(speed / 32, 0, 1);
-        node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * this.variant.rates * airflow * dt, Space.LOCAL);
+        node.rotate(AXIS_RIGHT, this.pitchInput * this.config.pitchRate * this.variant.rates * airflow * dt, Space.LOCAL);
       }
       // Hard attitude clamps while the wheels carry the aircraft:
       // pitch between 0 and ~14 degrees, roll zeroed.
@@ -606,7 +608,7 @@ export class AircraftController {
     // Airborne: control power grows with airspeed and fades in a stall
     const effectiveness = clamp(0.3 + speed / 38, 0.3, 1) * (1 - 0.5 * stallFactor);
     if (this.pitchInput !== 0) {
-      node.rotate(AXIS_RIGHT, this.pitchInput * PITCH_RATE * this.variant.rates * effectiveness * dt, Space.LOCAL);
+      node.rotate(AXIS_RIGHT, this.pitchInput * this.config.pitchRate * this.variant.rates * effectiveness * dt, Space.LOCAL);
     }
     if (this.rollInput !== 0) {
       // Soft bank limit (~35-50 degrees): rolling further into a steep
@@ -622,12 +624,12 @@ export class AircraftController {
       }
       node.rotate(
         AXIS_BACK,
-        this.rollInput * ROLL_RATE * this.variant.rates * effectiveness * rollAuthority * dt,
+        this.rollInput * this.config.rollRate * this.variant.rates * effectiveness * rollAuthority * dt,
         Space.LOCAL,
       );
     }
     if (this.yawInput !== 0) {
-      node.rotate(AXIS_UP, this.yawInput * YAW_RATE * this.variant.rates * effectiveness * dt, Space.LOCAL);
+      node.rotate(AXIS_UP, this.yawInput * this.config.yawRate * this.variant.rates * effectiveness * dt, Space.LOCAL);
     }
 
     // Stall: the nose drops toward the flight path, controls feel weak
@@ -700,9 +702,9 @@ export class AircraftController {
     // stall even with the stick held back, as in a real aircraft.
     const alphaRad = (alphaDeg * Math.PI) / 180;
     const dynamicPressure = 0.5 * AIR_DENSITY * speed * speed;
-    const clLevel = (MASS * GRAVITY) / Math.max(dynamicPressure * WING_AREA, 1);
+    const clLevel = (this.config.mass * GRAVITY) / Math.max(dynamicPressure * this.config.wingArea, 1);
     const bankCos = Math.max(Math.cos(bankRight), 0.6); // load factor cap ~1.67
-    const alphaForLoad = clLevel / bankCos / CL_ALPHA;
+    const alphaForLoad = clLevel / bankCos / this.config.liftSlope;
     const alphaTarget = clamp(Math.max(TRIM_ALPHA, alphaForLoad), -0.02, 0.19);
     let pitchRate = clamp(2.0 * (alphaTarget - alphaRad), -0.9, 0.9);
     if (pitchRate > 0) pitchRate *= stability; // only nose-up fades in a stall

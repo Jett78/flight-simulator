@@ -5,6 +5,9 @@ interface SceneCanvasProps {
   /** Called with the live FlightScene once created (null on unmount),
    *  so React UI can call into it — e.g. the camera reset button. */
   onReady?: (scene: FlightScene | null) => void;
+  /** Multi-aircraft Phase 2: the selected aircraft's registry id.
+   *  The scene is (re)built with this aircraft's configuration. */
+  aircraftId: string;
 }
 
 /**
@@ -12,7 +15,7 @@ interface SceneCanvasProps {
  * Creates the FlightScene on mount and disposes it on unmount
  * (safe under React StrictMode's double-mount in development).
  */
-export function SceneCanvas({ onReady }: SceneCanvasProps) {
+export function SceneCanvas({ onReady, aircraftId }: SceneCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const onReadyRef = useRef(onReady);
   useEffect(() => {
@@ -23,13 +26,15 @@ export function SceneCanvas({ onReady }: SceneCanvasProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const flightScene = new FlightScene(canvas);
+    const flightScene = new FlightScene(canvas, aircraftId);
     onReadyRef.current?.(flightScene);
     return () => {
       onReadyRef.current?.(null);
       flightScene.dispose();
     };
-  }, []);
+    // Rebuild the whole scene when the aircraft changes: the
+    // config shapes physics, camera and model fit from birth.
+  }, [aircraftId]);
 
   return (
     <canvas

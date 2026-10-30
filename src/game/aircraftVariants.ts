@@ -1,13 +1,15 @@
 /**
- * Phase 14 — aircraft variants.
+ * Phase 14 — aircraft variants ("editions").
  *
- * One airframe (the Cesium Air model), three editions. Each
- * variant is a paint tint on the model plus a flight-model
- * profile: thrust / control-rate / drag / top-speed multipliers
- * and a stall-angle shift, applied inside AircraftController.
- * Standard is exactly the pre-Phase-14 tuning (all scales 1), so
- * the existing physics behaviour is the middle variant, not a
- * special case.
+ * Three editions of tuning that multiply over whichever
+ * AircraftConfig is active (Phase 1/2 config system): a paint
+ * tint on the model plus a flight-model profile — thrust /
+ * control-rate / drag / top-speed multipliers and a stall-angle
+ * shift, applied inside AircraftController. Standard is exactly
+ * the untuned behaviour (all scales 1), so the stock feel is
+ * the middle variant, not a special case. Variant names are
+ * edition names only ("Trainer"); the aircraft's own name comes
+ * from its config.
  */
 
 export interface AircraftVariant {
@@ -30,7 +32,7 @@ export interface AircraftVariant {
 export const AIRCRAFT_VARIANTS: AircraftVariant[] = [
   {
     id: "standard",
-    name: "Cesium Air · Standard",
+    name: "Standard",
     blurb: "The balanced all-rounder. Stock paint, stock tuning.",
     thrust: 1,
     rates: 1,
@@ -42,7 +44,7 @@ export const AIRCRAFT_VARIANTS: AircraftVariant[] = [
   },
   {
     id: "trainer",
-    name: "Cesium Air · Trainer",
+    name: "Trainer",
     blurb: "Gentle power, calm controls, a stall that warns late and bites softly. Learn here.",
     thrust: 0.78,
     rates: 0.8,
@@ -54,7 +56,7 @@ export const AIRCRAFT_VARIANTS: AircraftVariant[] = [
   },
   {
     id: "sport",
-    name: "Cesium Air · Sport",
+    name: "Sport",
     blurb: "38% more thrust, sharper controls, less drag — and a stall that arrives earlier. For showing off.",
     thrust: 1.38,
     rates: 1.3,

@@ -72,6 +72,8 @@ export async function loadAircraftModel(
   aircraftRoot: TransformNode,
   addShadowCaster: (mesh: AbstractMesh) => void,
   url: string = MODEL_URL,
+  /** Multi-aircraft Phase 1: config scale — fitted length multiplier (1 = the stock 11 m). */
+  scaleFactor: number = 1,
 ): Promise<boolean> {
   // Snapshot the placeholder meshes before the model exists.
   const placeholders = aircraftRoot.getChildMeshes(false);
@@ -149,7 +151,7 @@ export async function loadAircraftModel(
 
     // --- Fit: yaw the nose to -Z, scale to target length ---
     container.rotation.y = Math.atan2(noseDir.x, -noseDir.z);
-    container.scaling.setAll(TARGET_LENGTH / length);
+    container.scaling.setAll((TARGET_LENGTH * scaleFactor) / length);
 
     // Re-measure with yaw+scale applied, then centre horizontally
     // and drop the underside exactly onto the gear contact.

@@ -1,0 +1,246 @@
+/* Multi-aircraft Phase 2 — selection screen.
+   Same visual language as the HUD: deep-navy panels on sky,
+   gold (#ffd166) as the single accent. */
+
+.select-root {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 28px 18px 34px;
+  color: #eef5fd;
+  background:
+    radial-gradient(1100px 480px at 50% 108%, rgba(255, 209, 102, 0.22), rgba(255, 209, 102, 0) 60%),
+    linear-gradient(180deg, #0c2a52 0%, #2c66ac 46%, #78b5f5 82%, #a9cff8 100%);
+}
+
+.select-head {
+  text-align: center;
+}
+
+.select-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #0b1d33;
+  background: #ffd166;
+  border-radius: 4px;
+  padding: 4px 9px;
+}
+
+.select-head h1 {
+  margin: 12px 0 6px;
+  font-size: clamp(28px, 4.5vw, 42px);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 14px rgba(4, 20, 40, 0.45);
+}
+
+.select-head p {
+  margin: 0;
+  font-size: 14.5px;
+  color: rgba(238, 245, 253, 0.85);
+}
+
+.select-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18px;
+  max-width: 1080px;
+}
+
+.select-card {
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  width: 320px;
+  max-width: min(320px, 92vw);
+  padding: 16px 16px 14px;
+  background: rgba(8, 18, 32, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.select-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.38);
+}
+
+.select-card.is-selected {
+  border-color: rgba(255, 209, 102, 0.95);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 209, 102, 0.55);
+  transform: translateY(-4px);
+}
+
+.select-art {
+  height: 104px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(120, 181, 245, 0.35), rgba(120, 181, 245, 0.07));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.select-art svg {
+  width: 88%;
+  height: auto;
+}
+
+.select-art .art-body {
+  fill: #eaf4ff;
+}
+
+.select-art .art-wing {
+  fill: #bcd8f7;
+}
+
+.select-art .art-detail {
+  fill: #7fb2e8;
+}
+
+.select-art .art-prop {
+  fill: rgba(234, 244, 255, 0.55);
+}
+
+.select-art .art-window {
+  fill: #2c66ac;
+}
+
+.select-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.select-card-top h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 750;
+}
+
+.select-chip {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b1d33;
+  background: #ffd166;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.select-desc {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(238, 245, 253, 0.82);
+  min-height: 57px;
+}
+
+.select-stats {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.select-stats > div {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.select-stats dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(238, 245, 253, 0.6);
+}
+
+.select-stats dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.select-selected {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #ffd166;
+  background: rgba(8, 18, 32, 0.85);
+  border: 1px solid rgba(255, 209, 102, 0.7);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.select-fly {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #0b1d33;
+  background: #ffd166;
+  border: none;
+  border-radius: 999px;
+  padding: 13px 52px 11px;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(4, 20, 40, 0.4);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.select-fly:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+}
+
+.select-fly-sub {
+  font-size: 12px;
+  font-weight: 650;
+  opacity: 0.75;
+}
+
+.select-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(238, 245, 253, 0.75);
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .select-root {
+    justify-content: flex-start;
+  }
+
+  .select-grid {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .select-desc {
+    min-height: 0;
+  }
+}

@@ -20,6 +20,7 @@ import {
   loadAircraftVariantId,
   saveAircraftVariantId,
 } from "./aircraftVariants";
+import { getAircraftConfig, type AircraftConfig } from "./aircraftConfigs";
 import { createAirport } from "./createAirport";
 import { createAirplane } from "./createAirplane";
 import { createIsland } from "./createIsland";
@@ -111,6 +112,27 @@ const COCKPIT_MODEL = {
 };
 
 /**
+ * Multi-aircraft Phase 1: seat the camera presets from the
+ * active aircraft's config. The defaults above are the Cesium
+ * Air's values, and the default config carries those same
+ * numbers, so this is a no-op for the current game — it exists
+ * so a bigger or smaller aircraft (Phase 2+) frames correctly.
+ * Note the GLB cockpit re-seat (COCKPIT_MODEL) still runs after
+ * the default model loads, exactly as before.
+ */
+function applyCameraConfig(cfg: AircraftConfig): void {
+  const set = (name: string, pose: AircraftConfig["camera"]["chase"]) => {
+    const mode = CAMERA_MODES.find((m) => m.name === name);
+    if (!mode) return;
+    mode.offset.set(pose.offset[0], pose.offset[1], pose.offset[2]);
+    mode.lookOffset.set(pose.lookOffset[0], pose.lookOffset[1], pose.lookOffset[2]);
+  };
+  set("Chase", cfg.camera.chase);
+  set("Chase far", cfg.camera.chaseFar);
+  set("Cockpit", cfg.camera.cockpit);
+}
+
+/**
  * Owns the Babylon.js Engine + Scene.
  *
  * Phase 4 wiring: InputManager (keyboard) -> AircraftController
@@ -125,6 +147,13 @@ export class FlightScene {
   onTelemetry?: (state: FlightState) => void;
   /** Phase 14: gamepad connect/disconnect, for the HUD chip. */
   onGamepadConnectionChange?: (connected: boolean) => void;
+
+  /**
+   * Multi-aircraft: the active aircraft configuration, chosen
+   * on the Phase 2 selection screen and passed to the
+   * constructor; defaults to the Cesium Air.
+   */
+  readonly aircraftConfig: AircraftConfig;
 
   /** Phase 14: original paint colours, captured before any tint. */
   private readonly paintOriginals = new Map<number, Color3>();
@@ -175,7 +204,12 @@ export class FlightScene {
   private readonly _desiredPos = new Vector3();
   private readonly _desiredTarget = new Vector3();
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, aircraftId?: string) {
+    // Multi-aircraft Phase 2: the selection screen's choice,
+    // resolved through the registry (unknown ids → the default
+    // Cesium Air). Assigned before buildWorld so the model load
+    // and the controller both initialize with this aircraft.
+    this.aircraftConfig = getAircraftConfig(aircraftId);
     this.engine = new Engine(canvas, true, {
       antialias: true,
       stencil: true,
@@ -212,7 +246,9 @@ export class FlightScene {
       createGroundSampler(),
       this.obstacleField,
       aircraftVariantById(loadAircraftVariantId()),
+      this.aircraftConfig,
     );
+    applyCameraConfig(this.aircraftConfig);
     this.input.onGamepadConnectionChange = (connected) =>
       this.onGamepadConnectionChange?.(connected);
     this.applyAircraftPaint(); // placeholder wears the tint until the model lands
@@ -588,7 +624,13 @@ export class FlightScene {
       airplane.setEnabled(true);
     };
     const revealTimer = setTimeout(reveal, 6000);
-    void loadAircraftModel(this.scene, airplane, (mesh) => shadows.addShadowCaster(mesh)).then(
+    void loadAircraftModel(
+      this.scene,
+      airplane,
+      (mesh) => shadows.addShadowCaster(mesh),
+      this.aircraftConfig.modelPath,
+      this.aircraftConfig.scale,
+    ).then(
       (loaded) => {
         clearTimeout(revealTimer);
         if (loaded) this.applyAircraftPaint();

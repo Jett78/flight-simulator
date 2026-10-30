@@ -53,6 +53,10 @@ interface HudProps {
   onSelectAircraft: (id: string) => void;
   /** Phase 14: a gamepad is connected (shows the 🎮 chip). */
   gamepadConnected: boolean;
+  /** Phase 2: the active aircraft's display name (from its config). */
+  aircraftName: string;
+  /** Phase 2: leave the flight and return to aircraft selection. */
+  onChangeAircraft: () => void;
 }
 
 interface RunSummary {
@@ -137,6 +141,8 @@ export function Hud({
   aircraftVariantId,
   onSelectAircraft,
   gamepadConnected,
+  aircraftName,
+  onChangeAircraft,
 }: HudProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [aircraftOpen, setAircraftOpen] = useState(false);
@@ -562,7 +568,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 14 · AIRCRAFT + GAMEPAD</div>
+        <div className="hud-badge">PHASE 15 · AIRCRAFT SELECTION</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -587,6 +593,14 @@ export function Hud({
           <button
             type="button"
             className="hud-btn"
+            title="End this flight and pick a different aircraft"
+            onClick={onChangeAircraft}
+          >
+            ✈ Change aircraft
+          </button>
+          <button
+            type="button"
+            className="hud-btn"
             aria-expanded={helpOpen}
             onClick={() => setHelpOpen((open) => !open)}
           >
@@ -606,7 +620,7 @@ export function Hud({
             aria-expanded={aircraftOpen}
             onClick={() => setAircraftOpen((open) => !open)}
           >
-            🛩 Aircraft
+            🛩 Edition
           </button>
           {gamepadConnected && (
             <span className="hud-camera-chip" title="Gamepad connected — see Controls for the mapping">
@@ -667,8 +681,8 @@ export function Hud({
           </aside>
         )}
         {aircraftOpen && (
-          <aside className="hud-panel hud-missions" aria-label="Aircraft selection">
-            <div className="hud-missions-title">Aircraft</div>
+          <aside className="hud-panel hud-missions" aria-label="Aircraft edition selection">
+            <div className="hud-missions-title">Aircraft edition</div>
             {AIRCRAFT_VARIANTS.map((v) => (
               <button
                 key={v.id}
@@ -679,7 +693,7 @@ export function Hud({
                   setAircraftOpen(false);
                 }}
               >
-                <span className="hud-mission-name">{v.name}</span>
+                <span className="hud-mission-name">{aircraftName} · {v.name}</span>
                 <span className="hud-mission-blurb">{v.blurb}</span>
                 <span className="hud-aircraft-stats">
                   Speed {"●".repeat(v.stats.speed)}{"○".repeat(5 - v.stats.speed)} · Agility{" "}
@@ -688,7 +702,7 @@ export function Hud({
                 </span>
               </button>
             ))}
-            <div className="hud-missions-note">Switching aircraft resets the flight.</div>
+            <div className="hud-missions-note">Switching edition resets the flight.</div>
           </aside>
         )}
         {helpOpen && (

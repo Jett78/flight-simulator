@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Hud } from "./components/Hud";
 import { SceneCanvas } from "./components/SceneCanvas";
+import { AircraftSelect } from "./components/AircraftSelect";
+import {
+  getAircraftConfig,
+  loadAircraftChoiceId,
+  saveAircraftChoiceId,
+} from "./game/aircraftConfigs";
 import type { FlightState } from "./game/AircraftController";
 import type { FlightScene } from "./game/FlightScene";
 import type { CheckpointVisual } from "./game/missions";
@@ -16,6 +22,26 @@ export default function App() {
   const sceneRef = useRef<FlightScene | null>(null);
   const [cameraMode, setCameraMode] = useState("Chase");
   const [paused, setPaused] = useState(false);
+  // Multi-aircraft Phase 2: the start flow. "select" shows the
+  // aircraft selection screen (no scene built yet); "fly" mounts
+  // the scene with the chosen aircraft's configuration.
+  const [screen, setScreen] = useState<"select" | "fly">("select");
+  const [aircraftId, setAircraftId] = useState<string>(() => loadAircraftChoiceId());
+
+  const handleSelectAircraftChoice = useCallback((id: string) => {
+    setAircraftId(id);
+    saveAircraftChoiceId(id);
+  }, []);
+
+  const handleFlyNow = useCallback(() => {
+    setPaused(false);
+    setScreen("fly");
+  }, []);
+
+  const handleChangeAircraft = useCallback(() => {
+    setPaused(false);
+    setScreen("select");
+  }, []);
   const [aircraftVariantId, setAircraftVariantId] = useState("standard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
 
@@ -59,9 +85,10 @@ export default function App() {
     sceneRef.current?.setCheckpoints(visuals);
   }, []);
 
-  // P pauses/resumes from anywhere (the game InputManager leaves
-  // KeyP to the UI layer).
+  // P pauses/resumes while flying (the game InputManager leaves
+  // KeyP to the UI layer). On the selection screen P does nothing.
   useEffect(() => {
+    if (screen !== "fly") return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyP" && !event.repeat && !event.metaKey && !event.altKey) {
         handleTogglePause();
@@ -69,11 +96,23 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleTogglePause]);
+  }, [handleTogglePause, screen]);
+
+  if (screen === "select") {
+    return (
+      <main className="app-shell">
+        <AircraftSelect
+          selectedId={aircraftId}
+          onSelect={handleSelectAircraftChoice}
+          onFly={handleFlyNow}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
-      <SceneCanvas onReady={handleReady} />
+      <SceneCanvas aircraftId={aircraftId} onReady={handleReady} />
       <Hud
         getState={getState}
         cameraMode={cameraMode}
@@ -85,6 +124,8 @@ export default function App() {
         aircraftVariantId={aircraftVariantId}
         onSelectAircraft={handleSelectAircraft}
         gamepadConnected={gamepadConnected}
+        aircraftName={getAircraftConfig(aircraftId).name}
+        onChangeAircraft={handleChangeAircraft}
       />
     </main>
   );
