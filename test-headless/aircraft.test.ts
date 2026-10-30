@@ -31,6 +31,7 @@ import {
   type AircraftConfig,
 } from "../src/game/aircraftConfigs";
 import type { InputManager as InputManagerType } from "../src/game/InputManager";
+import { createGroundSampler } from "../src/game/runway";
 
 const DT = 1 / 120;
 let failures = 0;
@@ -102,7 +103,8 @@ const step = (
       eq(d.pitchRate, 0.8) && eq(d.rollRate, 1.6) && eq(d.yawRate, 0.5) &&
       eq(d.stallAnglePosDeg, 15) && eq(d.stallAngleNegDeg, 12) &&
       eq(d.lapseSpeed, 170) && eq(d.lapseFloor, 0.3) && eq(d.throttleResponse, 1) && eq(d.scale, 1) &&
-      eq(d.dragRiseStart, 85) && eq(d.dragRiseSpan, 35) && eq(d.dragRiseAmount, 0.25),
+      eq(d.dragRiseStart, 85) && eq(d.dragRiseSpan, 35) && eq(d.dragRiseAmount, 0.25) &&
+      eq(d.controlResponse, 7),
     "mass/thrust/wing/drag/rates/stall/lapse all match the old module constants",
   );
   check(
@@ -201,6 +203,223 @@ const step = (
   check("F3 legacy drift guard: default still accelerates like before", v > 4.2 && v < 5.0, `${v.toFixed(2)} m/s after 2 s (was ≈4.6)`);
   scene.dispose();
   engine.dispose();
+}
+
+
+// ---------- H. Phase 3 handling battery ----------
+
+{
+  // H1: standing-start acceleration over 5 s (spool + thrust/weight).
+  const v: Record<string, number> = {};
+  for (const cfg of listAircraft()) {
+    const sim = makeController(cfg, new Vector3(0, 2.41, 105));
+    sim.input.keys.add("ShiftLeft");
+    step(sim, 120 * 5);
+    v[cfg.id] = sim.controller.getState().airspeed;
+    sim.scene.dispose();
+    sim.engine.dispose();
+  }
+  check(
+    "H1 acceleration: fighter > jet > prop",
+    v["falcon-f1"] > v["skyliner-200"] && v["skyliner-200"] > v["cesium-air"],
+    `fighter ${v["falcon-f1"].toFixed(1)} · jet ${v["skyliner-200"].toFixed(1)} · prop ${v["cesium-air"].toFixed(1)} m/s after 5 s`,
+  );
+}
+
+{
+  // H2a: roll-in — time from level to 45° of bank on full roll
+  // input. This is the direct measure of roll response.
+  const rollIn: Record<string, number> = {};
+  for (const cfg of listAircraft()) {
+    const sim = makeController(cfg, new Vector3(0, 400, 0));
+    sim.controller.velocity.set(0, 0, -55);
+    sim.input.keys.add("KeyA");
+    let t = Infinity;
+    for (let i = 0; i < 120 * 8; i++) {
+      sim.controller.step(DT, sim.input as unknown as InputManagerType);
+      if (Math.abs(sim.controller.getState().rollDeg) >= 45) {
+        t = (i + 1) * DT;
+        break;
+      }
+    }
+    rollIn[cfg.id] = t;
+    sim.scene.dispose();
+    sim.engine.dispose();
+  }
+  check(
+    "H2a roll-in to 45°: fighter < prop < jet",
+    rollIn["falcon-f1"] < rollIn["cesium-air"] && rollIn["cesium-air"] < rollIn["skyliner-200"],
+    `fighter ${rollIn["falcon-f1"].toFixed(2)}s · prop ${rollIn["cesium-air"].toFixed(2)}s · jet ${rollIn["skyliner-200"].toFixed(2)}s`,
+  );
+
+  // H2b: sustained 180° turn at a latched 55 m/s, bank held at
+  // 50° by a wide-deadband pilot. At one shared speed and bank,
+  // turn rate is g·tan(bank)/v for everyone — the measured
+  // truth is that all three sit near that law, the jet loses
+  // seconds to its slow roll-in (widest feel), and the fighter
+  // stays close to the light prop despite its small wing. The
+  // fighter's agility edge is proven separately by H2a/H1/H3
+  // and by the speeds it alone can sustain (F2).
+  const times: Record<string, number> = {};
+  for (const cfg of listAircraft()) {
+    const sim = makeController(cfg, new Vector3(0, 400, 0));
+    sim.controller.velocity.set(0, 0, -55);
+    let swept = 0;
+    let prev = 0;
+    let t = 0;
+    for (let i = 0; i < 120 * 30; i++) {
+      const st = sim.controller.getState();
+      const keys = new Set<string>();
+      if (st.airspeed < 57) keys.add("ShiftLeft");
+      if (!st.grounded) {
+        if (st.rollDeg < 43) keys.add("KeyA");
+        else if (st.rollDeg > 57) keys.add("KeyD");
+        if (st.verticalSpeed < -2.5) keys.add("KeyS");
+        else if (st.verticalSpeed > 2.5) keys.add("KeyW");
+      }
+      sim.input.keys = keys;
+      sim.controller.step(DT, sim.input as unknown as InputManagerType);
+      const h = sim.controller.getState().headingDeg;
+      let d = h - prev;
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      swept += d;
+      prev = h;
+      t += DT;
+      if (Math.abs(swept) >= 180) break;
+      if (sim.controller.getState().crashed) break;
+    }
+    times[cfg.id] = Math.abs(swept) >= 180 ? t : Infinity;
+    sim.scene.dispose();
+    sim.engine.dispose();
+  }
+  check(
+    "H2b sustained turn: jet slowest; fighter within 6 s of the prop",
+    times["skyliner-200"] > times["cesium-air"] && times["falcon-f1"] < times["cesium-air"] + 6 && times["falcon-f1"] < times["skyliner-200"] + 2,
+    `fighter ${times["falcon-f1"].toFixed(1)}s · prop ${times["cesium-air"].toFixed(1)}s · jet ${times["skyliner-200"].toFixed(1)}s per 180° at 55 m/s`,
+  );
+}
+
+{
+  // H3: climb — mean vertical speed over t=6..9 s at full throttle.
+  const vs: Record<string, number> = {};
+  for (const cfg of listAircraft()) {
+    const sim = makeController(cfg, new Vector3(0, 300, 0));
+    sim.controller.velocity.set(0, 0, -50);
+    sim.input.keys.add("ShiftLeft");
+    step(sim, 120 * 6);
+    let sum = 0;
+    for (let i = 0; i < 6; i++) {
+      step(sim, 60);
+      sum += sim.controller.getState().verticalSpeed;
+    }
+    vs[cfg.id] = sum / 6;
+    sim.scene.dispose();
+    sim.engine.dispose();
+  }
+  check(
+    "H3 climb: all climb strongly; fighter dominates; jet gradual",
+    vs["cesium-air"] > 5 && vs["skyliner-200"] > 8 && vs["falcon-f1"] > 1.5 * vs["cesium-air"],
+    `fighter ${vs["falcon-f1"].toFixed(1)} · jet ${vs["skyliner-200"].toFixed(1)} · prop ${vs["cesium-air"].toFixed(1)} m/s`,
+  );
+}
+
+{
+  // H4: stall onset near each config's own angle, then recovery.
+  for (const cfg of listAircraft()) {
+    const sim = makeController(cfg, new Vector3(0, 400, 0));
+    sim.controller.velocity.set(0, 0, -cfg.stallSpeed * 1.7);
+    sim.input.keys.add("KeyS"); // idle throttle, pull and hold
+    let onsetAlpha: number | null = null;
+    for (let i = 0; i < 120 * 25 && onsetAlpha === null; i++) {
+      sim.controller.step(DT, sim.input as unknown as InputManagerType);
+      const st = sim.controller.getState();
+      if (st.stallFactor > 0.5) onsetAlpha = st.angleOfAttackDeg;
+      if (st.crashed) break;
+    }
+    // Recover like a pilot: nose down + full power UNTIL the
+    // wing is flying again, then hands off (holding the dive
+    // for a fixed 12 s just flies jets into the ground).
+    sim.input.keys.delete("KeyS");
+    sim.input.keys.add("KeyW");
+    sim.input.keys.add("ShiftLeft");
+    for (let i = 0; i < 120 * 12; i++) {
+      sim.controller.step(DT, sim.input as unknown as InputManagerType);
+      const st = sim.controller.getState();
+      if (st.stallFactor < 0.1 && st.airspeed > cfg.stallSpeed * 1.3) break;
+      if (st.crashed) break;
+    }
+    sim.input.keys.clear();
+    step(sim, 120 * 2);
+    const end = sim.controller.getState();
+    check(
+      `H4 ${cfg.id} stalls at its own angle and recovers`,
+      onsetAlpha !== null &&
+        Math.abs(onsetAlpha - cfg.stallAnglePosDeg) <= 5 &&
+        end.stallFactor < 0.25 &&
+        !end.crashed,
+      onsetAlpha === null
+        ? "never stalled"
+        : `onset at ${onsetAlpha.toFixed(1)}° (config ${cfg.stallAnglePosDeg}°), after recovery stall=${end.stallFactor.toFixed(2)}`,
+    );
+    sim.scene.dispose();
+    sim.engine.dispose();
+  }
+}
+
+{
+  // H5: straight-in landing on the real runway sampler at each
+  // aircraft's own approach speed — must earn a verdict, not a
+  // crash. The test pilot flies a latched throttle (idle on
+  // short final, as real approaches are flown) and a VS loop
+  // with a wide deadband so it doesn't porpoise a twitchy jet.
+  const sampler = createGroundSampler();
+  for (const cfg of listAircraft()) {
+    const engine = new NullEngine();
+    const scene = new Scene(engine);
+    const node = new TransformNode("airplane", scene);
+    const approach = cfg.stallSpeed * 1.26;
+    const startZ = approach * 13;
+    const groundAtSpawn = sampler(0, startZ).height;
+    const start = new Vector3(0, groundAtSpawn + 2.25 + 34, startZ);
+    node.position.copyFrom(start);
+    const input = new FakeInput();
+    const controller = new AircraftController(node, start, sampler, null, undefined, cfg);
+    controller.velocity.set(0, 0, -approach);
+    let powerOn = true;
+    let verdict: string | null = null;
+    for (let i = 0; i < 120 * 45; i++) {
+      const st = controller.getState();
+      if (st.crashed) break;
+      if (st.touchdown) {
+        verdict = st.touchdown.quality;
+        break;
+      }
+      const g = sampler(node.position.x, node.position.z);
+      const agl = node.position.y - (g.height + 2.25);
+      const keys = new Set<string>();
+      if (agl > 10) {
+        if (st.airspeed > approach + 1.5) powerOn = false;
+        if (st.airspeed < approach - 1.5) powerOn = true;
+        if (powerOn) keys.add("ShiftLeft");
+      }
+      const targetVS = agl < 2 ? -1.0 : agl < 8 ? -2.0 : -2.4;
+      if (!st.grounded) {
+        if (st.verticalSpeed < targetVS - 0.6) keys.add("KeyS");
+        else if (st.verticalSpeed > targetVS + 0.6) keys.add("KeyW");
+      }
+      input.keys = keys;
+      controller.step(DT, input as unknown as InputManagerType);
+    }
+    const end = controller.getState();
+    check(
+      `H5 ${cfg.id} lands on the runway without crashing (approach ${approach.toFixed(0)} m/s)`,
+      verdict !== null && verdict !== "off-runway" && !end.crashed,
+      verdict === null ? `no touchdown (crashed=${end.crashed})` : `verdict: ${verdict}`,
+    );
+    scene.dispose();
+    engine.dispose();
+  }
 }
 
 // ---------- R4. Extension point (runs last: mutates the registry) ----------

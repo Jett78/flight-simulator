@@ -64,7 +64,7 @@ const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch tr
 const THROTTLE_UP_RATE = 0.6; // per second while Shift held
 const THROTTLE_DOWN_RATE = 1.2; // per second while Space held (fast cut)
 const THROTTLE_DECAY_RATE = 0.5; // per second when no throttle key held
-const INPUT_RESPONSE = 7; // 1/s — smoothing of control deflections
+// (Control-deflection smoothing is per-aircraft now: config.controlResponse, Phase 3.)
 
 // --- World limits ---
 const GROUND_Y = 2.41; // root height with wheels on the runway
@@ -345,9 +345,9 @@ export class AircraftController {
     // direction swap (Jeet, 2026-10-30): A rolls RIGHT, D rolls
     // LEFT; Q yaws RIGHT, E yaws LEFT — and adds gamepad sticks.
     input.controlAxes(this._axes);
-    this.pitchInput = damp(this.pitchInput, this._axes.pitch, INPUT_RESPONSE, dt);
-    this.rollInput = damp(this.rollInput, this._axes.roll, INPUT_RESPONSE, dt);
-    this.yawInput = damp(this.yawInput, this._axes.yaw, INPUT_RESPONSE, dt);
+    this.pitchInput = damp(this.pitchInput, this._axes.pitch, this.config.controlResponse, dt);
+    this.rollInput = damp(this.rollInput, this._axes.roll, this.config.controlResponse, dt);
+    this.yawInput = damp(this.yawInput, this._axes.yaw, this.config.controlResponse, dt);
 
     // ---------- Aerodynamic state ----------
     this.computeBasis();

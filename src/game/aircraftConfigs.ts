@@ -96,6 +96,13 @@ export interface AircraftConfig {
   pitchRate: number; // rad/s
   rollRate: number; // rad/s
   yawRate: number; // rad/s
+  /**
+   * Control response (1/s): how fast the actual deflections
+   * chase the stick — the inertia feel. Low = a heavy aircraft
+   * that answers late and gently; high = a fighter's instant
+   * bite. (Phase 3: previously one shared value for all.)
+   */
+  controlResponse: number;
 
   /** Visual length multiplier applied when the model is fitted (1 = 11 m). */
   scale: number;
@@ -174,6 +181,7 @@ registerAircraft({
   pitchRate: 0.8,
   rollRate: 1.6,
   yawRate: 0.5,
+  controlResponse: 7,
   scale: 1,
   camera: {
     chase: { offset: [0, 4.4, 14], lookOffset: [0, 1.1, -8] },
@@ -216,6 +224,7 @@ registerAircraft({
   pitchRate: 0.38,
   rollRate: 0.55,
   yawRate: 0.22,
+  controlResponse: 3.2,
   scale: 2.6,
   camera: {
     chase: { offset: [0, 8, 30], lookOffset: [0, 2, -16] },
@@ -255,6 +264,7 @@ registerAircraft({
   pitchRate: 1.5,
   rollRate: 3.4,
   yawRate: 0.7,
+  controlResponse: 11,
   scale: 1.35,
   camera: {
     chase: { offset: [0, 3.6, 12], lookOffset: [0, 0.9, -8] },

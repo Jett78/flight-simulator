@@ -126,6 +126,8 @@ export default function App() {
         gamepadConnected={gamepadConnected}
         aircraftName={getAircraftConfig(aircraftId).name}
         onChangeAircraft={handleChangeAircraft}
+        aircraftMaxSpeedKmh={Math.round(getAircraftConfig(aircraftId).maxSpeed * 3.6)}
+        rotateKmh={Math.round(getAircraftConfig(aircraftId).stallSpeed * 1.2 * 3.6)}
       />
     </main>
   );

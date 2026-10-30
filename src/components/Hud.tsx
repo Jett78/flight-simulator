@@ -57,6 +57,10 @@ interface HudProps {
   aircraftName: string;
   /** Phase 2: leave the flight and return to aircraft selection. */
   onChangeAircraft: () => void;
+  /** Phase 3: active aircraft's max speed (km/h) — sizes the speed tape. */
+  aircraftMaxSpeedKmh: number;
+  /** Phase 3: active aircraft's rotate speed (km/h) for the help tip. */
+  rotateKmh: number;
 }
 
 interface RunSummary {
@@ -102,19 +106,22 @@ function Tape({
   side,
   stripRef,
   valueRef,
+  labels,
 }: {
   title: string;
   unit: string;
   side: "left" | "right";
   stripRef: RefObject<HTMLDivElement | null>;
   valueRef: RefObject<HTMLSpanElement | null>;
+  /** Tick labels up the strip (Phase 3: airspeed range follows the aircraft). */
+  labels: number[];
 }) {
   return (
     <div className={`tape tape-${side}`}>
       <div className="tape-title">{title}</div>
       <div className="tape-window">
         <div ref={stripRef} className="tape-strip">
-          {TAPE_LABELS.map((v) => (
+          {labels.map((v) => (
             <span key={v} className="tape-label" style={{ bottom: v * TAPE_PX }}>
               {v}
             </span>
@@ -143,7 +150,13 @@ export function Hud({
   gamepadConnected,
   aircraftName,
   onChangeAircraft,
+  aircraftMaxSpeedKmh,
+  rotateKmh,
 }: HudProps) {
+  const speedTapeMax = Math.max(500, Math.ceil(aircraftMaxSpeedKmh / 100) * 100);
+  const speedLabels: number[] = [];
+  for (let v = 0; v <= speedTapeMax; v += 50) speedLabels.push(v);
+
   const [helpOpen, setHelpOpen] = useState(false);
   const [aircraftOpen, setAircraftOpen] = useState(false);
 
@@ -321,8 +334,8 @@ export function Hud({
       const kmh = s.airspeed * 3.6;
       if (spdValue.current) spdValue.current.textContent = String(Math.round(kmh));
       if (spdStrip.current) {
-        const clamped = Math.min(Math.max(kmh, 0), TAPE_MAX);
-        spdStrip.current.style.top = `${tapeCenter - (TAPE_MAX - clamped) * TAPE_PX}px`;
+        const clamped = Math.min(Math.max(kmh, 0), speedTapeMax);
+        spdStrip.current.style.top = `${tapeCenter - (speedTapeMax - clamped) * TAPE_PX}px`;
       }
 
       const alt = Math.max(0, Math.round(s.altitude));
@@ -568,7 +581,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 15 · AIRCRAFT SELECTION</div>
+        <div className="hud-badge">PHASE 16 · FLIGHT CHARACTERISTICS</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -739,7 +752,7 @@ export function Hud({
                 stop — hit them fast and you crash.
               </li>
               <li className="hud-help-tip">
-                Hold Shift — at ~100 km/h pull S to take off. Land back on
+                Hold Shift — at ~{rotateKmh} km/h pull S to take off. Land back on
                 the runway gently: sink under ~2.5 m/s, wings level.
               </li>
               <li className="hud-help-tip">
@@ -920,6 +933,7 @@ export function Hud({
           side="left"
           stripRef={spdStrip}
           valueRef={spdValue}
+          labels={speedLabels}
         />
       </div>
 
@@ -931,6 +945,7 @@ export function Hud({
           side="right"
           stripRef={altStrip}
           valueRef={altValue}
+          labels={TAPE_LABELS}
         />
         <div className="vsi">
           <div className="tape-title">VERT SPEED</div>
