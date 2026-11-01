@@ -805,6 +805,12 @@ Key design rules:
   release and it decays to zero), **Space** = fast throttle cut,
   **C** = camera, **P** = pause, **R** = reset, **mouse drag** on
   the view = look around (Reset view recentres).
+- **Reverse thrust (v0.23.0):** on the ground, holding **Space**
+  past idle engages reverse (down to −45%): strong braking after
+  touchdown, or backing up on the apron/runway. Release Space and
+  it springs back to idle. In the air Space only cuts — reverse
+  never engages airborne. The throttle gauge shows amber
+  **REV n%** while reversing.
 
 ## Project structure
 

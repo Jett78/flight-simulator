@@ -386,6 +386,10 @@
   background: #57b96a;
 }
 
+.thr-fill.rev {
+  background: #e8a33d;
+}
+
 .thr-value {
   font-size: 15px;
   font-weight: 700;

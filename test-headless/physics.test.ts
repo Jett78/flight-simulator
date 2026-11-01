@@ -364,5 +364,43 @@ function makeSim() {
   check("A banks right / D banks left (0.12.1 swap)", dhA > 5 && dhD < -5, `A: heading ${dhA.toFixed(0)}°, D: heading ${dhD.toFixed(0)}°`);
 }
 
+// ---------- 9. Reverse thrust (v0.23.0): ground-only, via Space ----------
+{
+  const sim = makeSim();
+  // Hold Space at idle on the ground: throttle must go negative,
+  // clamp at -0.45, and the aircraft must roll backwards.
+  sim.run(2, ["Space"]);
+  const sRev = sim.controller.getState();
+  check(
+    "R1 reverse engages on the ground",
+    sRev.throttle <= -0.4 && sRev.throttle >= -0.451,
+    `throttle=${sRev.throttle.toFixed(2)}`,
+  );
+  sim.run(3, ["Space"]);
+  const vRev = sim.controller.velocity;
+  const backSpeed = vRev.z; // nose is -Z at spawn; backwards = +Z motion
+  check(
+    "R2 aircraft rolls backwards in reverse",
+    backSpeed > 2 && backSpeed < 14 && sim.controller.getState().grounded,
+    `backward speed=${backSpeed.toFixed(1)} m/s`,
+  );
+  // Release Space: reverse springs back to idle.
+  sim.run(1.5, []);
+  const sIdle = sim.controller.getState();
+  check("R3 reverse releases to idle", sIdle.throttle === 0, `throttle=${sIdle.throttle.toFixed(2)}`);
+  // In the air, Space still only cuts — never negative. (Sampled
+  // mid-flight: after a touchdown, reverse engaging is correct.)
+  const air = makeSim();
+  air.run(2.5, ["ShiftLeft"]);
+  air.runUntil(["ShiftLeft", "KeyS"], () => air.controller.getState().altitude > 40, 30);
+  air.run(1, ["Space"]);
+  const sAir = air.controller.getState();
+  check(
+    "R4 no reverse in the air",
+    sAir.throttle === 0 && !sAir.grounded,
+    `throttle=${sAir.throttle.toFixed(2)} grounded=${sAir.grounded} alt=${sAir.altitude.toFixed(0)}`,
+  );
+}
+
 console.log(failures === 0 ? "\nALL PHYSICS TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -382,8 +382,12 @@ export function Hud({
       }
 
       const thr = Math.round(s.throttle * 100);
-      if (thrValue.current) thrValue.current.textContent = `${thr}%`;
-      if (thrFill.current) thrFill.current.style.height = `${thr}%`;
+      if (thrValue.current)
+        thrValue.current.textContent = thr < 0 ? `REV ${-thr}%` : `${thr}%`;
+      if (thrFill.current) {
+        thrFill.current.style.height = `${Math.abs(thr)}%`;
+        thrFill.current.classList.toggle("rev", thr < 0);
+      }
 
       if (horizon.current) {
         const pitchPx = Math.min(Math.max(s.pitchDeg, -30), 30) * 2;
@@ -600,7 +604,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 22 · BIGGER AIRPORT</div>
+        <div className="hud-badge">PHASE 23 · REVERSE THRUST</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -760,7 +764,8 @@ export function Hud({
               </li>
               <li>
                 <strong>Shift (hold) / Space</strong> throttle — hold Shift for
-                power, release and power falls; Space cuts fast
+                power, release and power falls; Space cuts fast, and on the
+                ground holding Space past idle engages reverse thrust
               </li>
               <li>
                 <strong>C</strong> camera · <strong>R</strong> reset aircraft ·{" "}

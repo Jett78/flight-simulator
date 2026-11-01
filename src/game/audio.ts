@@ -354,26 +354,30 @@ export class SoundEngine {
     if (!this.ctx || !this.engineGain) return;
     const t = this.ctx.currentTime;
     const p = this.profile;
+    // Reverse thrust (throttle < 0 on the ground) spools the
+    // engines up just like forward power — drive the sound with
+    // the magnitude.
+    const thr = Math.abs(state.throttle);
     const engineTarget =
-      active && !state.crashed ? engineGainFor(state.throttle, p) : 0;
+      active && !state.crashed ? engineGainFor(thr, p) : 0;
     this.engineGain.gain.setTargetAtTime(engineTarget, t, p.tau);
     if (this.engineOscA && this.engineOscB && this.engineFilter) {
-      const f = engineFreqFor(state.throttle, state.airspeed, p);
+      const f = engineFreqFor(thr, state.airspeed, p);
       this.engineOscA.frequency.setTargetAtTime(f, t, p.tau);
       this.engineOscB.frequency.setTargetAtTime(f * p.oscBRatio + p.oscBOffset, t, p.tau);
       this.engineFilter.frequency.setTargetAtTime(
-        p.filterBase + state.throttle * p.filterThrottle,
+        p.filterBase + thr * p.filterThrottle,
         t,
         p.tau,
       );
     }
     if (this.chopOsc && this.chopGain) {
-      this.chopOsc.frequency.setTargetAtTime(chopRateFor(state.throttle, p), t, p.tau);
+      this.chopOsc.frequency.setTargetAtTime(chopRateFor(thr, p), t, p.tau);
       this.chopGain.gain.setTargetAtTime(p.chopDepth * engineTarget, t, p.tau);
     }
     if (this.roarGain) {
       const roarTarget =
-        active && !state.crashed ? roarLevelFor(state.throttle, p) : 0;
+        active && !state.crashed ? roarLevelFor(thr, p) : 0;
       this.roarGain.gain.setTargetAtTime(roarTarget, t, p.tau);
     }
   }

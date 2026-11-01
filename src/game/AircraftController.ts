@@ -63,6 +63,12 @@ const TRIM_ALPHA = 0.115; // rad (~6.6 deg) — hands-off trim AoA, see pitch tr
 // lever position — the HUD throttle bar shows the live value.
 const THROTTLE_UP_RATE = 0.6; // per second while Shift held
 const THROTTLE_DOWN_RATE = 1.2; // per second while Space held (fast cut)
+// Reverse thrust (v0.23.0, Jeet): on the ground, holding Space
+// past idle engages reverse — throttle goes negative down to
+// -REVERSE_MAX, so the engines push the aircraft backwards
+// (strong braking after touchdown, or backing up on the apron).
+const REVERSE_MAX = 0.45;
+const THROTTLE_REVERSE_RATE = 0.9; // per second into reverse
 const THROTTLE_DECAY_RATE = 0.5; // per second when no throttle key held
 // (Control-deflection smoothing is per-aircraft now: config.controlResponse, Phase 3.)
 
@@ -332,11 +338,20 @@ export class AircraftController {
 
     // ---------- Controls ----------
     // Spring-loaded throttle: Shift raises, Space cuts fast, and
-    // with neither held the power decays to zero.
+    // with neither held the power decays to zero. On the ground,
+    // holding Space once the throttle reaches idle engages
+    // reverse thrust; in the air Space only cuts, never reverses.
     if (input.isDown("ShiftLeft", "ShiftRight")) {
       this.throttle = Math.min(1, this.throttle + THROTTLE_UP_RATE * this.config.throttleResponse * dt);
     } else if (input.isDown("Space")) {
-      this.throttle = Math.max(0, this.throttle - THROTTLE_DOWN_RATE * dt);
+      if (wasGrounded && this.throttle <= 0.001) {
+        this.throttle = Math.max(-REVERSE_MAX, this.throttle - THROTTLE_REVERSE_RATE * dt);
+      } else {
+        this.throttle = Math.max(0, this.throttle - THROTTLE_DOWN_RATE * dt);
+      }
+    } else if (this.throttle < 0) {
+      // Reverse springs back to idle when Space is released.
+      this.throttle = Math.min(0, this.throttle + THROTTLE_DECAY_RATE * dt);
     } else {
       this.throttle = Math.max(0, this.throttle - THROTTLE_DECAY_RATE * dt);
     }
@@ -366,7 +381,11 @@ export class AircraftController {
       alphaRad = Math.atan2(-upComp, fwdComp);
     }
     const alphaDeg = (alphaRad * 180) / Math.PI;
-    this._alphaDeg = alphaDeg;
+    // Reported AoA folds airflow-from-behind (reverse roll,
+    // tailslide) back toward 0 — the raw ±180° reading is
+    // meaningless on the HUD. The aero above keeps the raw value.
+    this._alphaDeg =
+      alphaDeg > 90 ? alphaDeg - 180 : alphaDeg < -90 ? alphaDeg + 180 : alphaDeg;
 
     // Lift coefficient: linear in AoA, clamped, then falls off post-stall
     // (Phase 14: variant shifts both stall angles — Trainer later/softer.)
@@ -397,7 +416,14 @@ export class AircraftController {
     // Engine thrust fades with airspeed (prop/jet lapse), floored so
     // the aircraft can still cruise at altitude speed.
     const lapse = clamp(1 - speed / this.config.lapseSpeed, this.config.lapseFloor, 1);
-    const thrust = this.throttle * this.config.thrust * this.variant.thrust * lapse;
+    let thrust = this.throttle * this.config.thrust * this.variant.thrust * lapse;
+    if (this.throttle < 0) {
+      // Reverse thrust fades as the aircraft rolls backwards, so
+      // backing up settles near ~12 m/s instead of running away
+      // (and the wing never sees a fast backwards airflow).
+      const fwdSpeed = Vector3.Dot(this.velocity, this._forward);
+      if (fwdSpeed < 0) thrust *= clamp(1 + fwdSpeed / 12, 0, 1);
+    }
     this._lift = lift;
     this._drag = drag;
     this._thrust = thrust;
