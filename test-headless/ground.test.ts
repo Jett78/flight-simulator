@@ -522,6 +522,12 @@ function flyFinal(
     Math.abs(edge.height - KATHMANDU.h) < 0.01,
     `height=${edge.height}`,
   );
+  const farEdge = sampler(KATHMANDU.x + 200, KATHMANDU.z);
+  check(
+    "Kathmandu pad is flat 200 m out too (Phase 26 expansion)",
+    Math.abs(farEdge.height - KATHMANDU.h) < 0.01,
+    `height=${farEdge.height}`,
+  );
 }
 
 console.log(failures === 0 ? "\nALL GROUND TESTS PASSED" : `\n${failures} GROUND TEST(S) FAILED`);

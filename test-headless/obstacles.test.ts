@@ -62,7 +62,7 @@ class FakeInput {
   );
   check(
     "A9 Kathmandu buildings are registered",
-    island.obstacles.filter((o) => o.name.startsWith("city-building")).length >= 40,
+    island.obstacles.filter((o) => o.name.startsWith("city-building")).length >= 90,
     `${island.obstacles.filter((o) => o.name.startsWith("city-building")).length} city buildings`,
   );
   check(
@@ -72,7 +72,7 @@ class FakeInput {
   );
   check(
     "A11 Swayambhunath stupa is solid",
-    field.query(KATHMANDU.x - 122, KATHMANDU.h + 10, KATHMANDU.z - 122, 4)?.name ===
+    field.query(KATHMANDU.x - 148, KATHMANDU.h + 10, KATHMANDU.z - 148, 4)?.name ===
       "swayambhu-stupa",
   );
   check(

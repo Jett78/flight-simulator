@@ -12,16 +12,23 @@ import type { Obstacle } from "./obstacles";
  * A stylised Kathmandu Valley floor carved into the hills WEST of
  * the airport, the same side as the real city sits from Tribhuvan
  * airport. `KATHMANDU` is the flattened pad: createIsland's
- * heightAt blends the terrain to `h` inside `r` (with a ~130 m
+ * heightAt blends the terrain to `h` inside `r` (with a ~110 m
  * valley-wall blend outside it), so every building sits on flat
  * ground by construction and the hills rise around it like the
  * valley rim.
  *
  * Contents:
  * - A road grid + an urban ground disc over the pad.
- * - ~55 mid-rise city buildings (brick / cream / concrete valley
+ * - Mid-rise city buildings (brick / cream / concrete valley
  *   palette), merged by colour into a handful of draw calls, each
  *   one a registered solid obstacle.
+ *
+ * Phase 26 (Jeet: "remove that greenery, add buildings, make it
+ * like a city"): the pad grew 150 -> 235 m radius and the blocks
+ * now fill it edge to edge (~110 buildings), the urban ground
+ * tint reaches past the pad, and trees are excluded well beyond
+ * it — no grass or trees inside the city any more, buildings and
+ * roads all the way out.
  * - Durbar Square: three tiered pagoda temples on a stone plaza.
  * - The Dharahara tower (white, balconied, ~48 m) beside the plaza.
  * - Swayambhunath: white dome + gold spire on its mound at the
@@ -32,7 +39,7 @@ import type { Obstacle } from "./obstacles";
  *   carries a KTM marker too.
  */
 
-export const KATHMANDU = { x: -640, z: -120, r: 150, h: 34 };
+export const KATHMANDU = { x: -640, z: -120, r: 235, h: 34 };
 
 /** Deterministic seeded RNG so the city is identical every load. */
 function mulberry32(seed: number) {
@@ -84,10 +91,13 @@ export function createKathmandu(scene: Scene): KathmanduResult {
     specular: 0.05,
   });
   const roadMeshes: Mesh[] = [];
-  const STREET_OFFS = [-132, -66, 0, 66, 132];
+  const STREET_OFFS = [-198, -132, -66, 0, 66, 132, 198];
   STREET_OFFS.forEach((o, i) => {
-    roadMeshes.push(box(`ktm-road-ns-${i}`, 10, 0.22, 292, cx + o, h + 0.17, cz));
-    roadMeshes.push(box(`ktm-road-ew-${i}`, 292, 0.22, 10, cx, h + 0.17, cz + o));
+    // Clip each street to the city disc (chord length at this
+    // offset) so road ends never leave the flat pad.
+    const chord = 2 * Math.sqrt(Math.max(0, 225 * 225 - o * o));
+    roadMeshes.push(box(`ktm-road-ns-${i}`, 10, 0.22, chord, cx + o, h + 0.17, cz));
+    roadMeshes.push(box(`ktm-road-ew-${i}`, chord, 0.22, 10, cx, h + 0.17, cz + o));
   });
   const roads = Mesh.MergeMeshes(roadMeshes, true);
   if (roads) {
@@ -110,9 +120,9 @@ export function createKathmandu(scene: Scene): KathmanduResult {
   const byColor = new Map<number, Mesh[]>();
   const roofMeshes: Mesh[] = [];
   // Blocks sit between the streets; each block holds a 2x2 of lots.
-  const BLOCK_OFFS = [-99, -33, 33, 99];
+  const BLOCK_OFFS = [-165, -99, -33, 33, 99, 165];
   const PLAZA_BLOCK = { bx: 33, bz: 33 }; // Durbar Square (below)
-  const STUPA = { dx: -122, dz: -122 };
+  const STUPA = { dx: -148, dz: -148 };
   let bIdx = 0;
   for (const bx of BLOCK_OFFS) {
     for (const bz of BLOCK_OFFS) {
@@ -121,11 +131,12 @@ export function createKathmandu(scene: Scene): KathmanduResult {
         for (const lz of [-14, 14]) {
           const dx = bx + lx;
           const dz = bz + lz;
+          if (Math.hypot(dx, dz) > 208) continue; // keep lots inside the city disc
           if (Math.hypot(dx - STUPA.dx, dz - STUPA.dz) < 42) continue; // stupa mound
-          if (rng() < 0.12) continue; // courtyard / open lot
+          if (rng() < 0.06) continue; // rare courtyard / open lot
           const w = 17 + rng() * 7;
           const d = 17 + rng() * 7;
-          const centreBoost = Math.max(0, (115 - Math.hypot(dx, dz)) / 115) * 15;
+          const centreBoost = Math.max(0, (200 - Math.hypot(dx, dz)) / 200) * 18;
           const hgt = 11 + rng() * 14 + centreBoost;
           const x = cx + dx;
           const z = cz + dz;
@@ -292,7 +303,7 @@ export function createKathmandu(scene: Scene): KathmanduResult {
       scene,
     );
     mound.position = new Vector3(sx, h + 3.5, sz);
-    mound.material = createMaterial(scene, "swayambhu-mound", 0.45, 0.48, 0.38);
+    mound.material = createMaterial(scene, "swayambhu-mound", 0.52, 0.48, 0.42);
     mound.receiveShadows = true;
     const whitewash = createMaterial(scene, "swayambhu-white", 0.9, 0.88, 0.82);
     let by = h + 7;

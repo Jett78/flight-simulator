@@ -151,7 +151,7 @@ export function heightAt(x: number, z: number): number {
   // airport. The blend band outside the pad is the valley wall —
   // terrain climbs from the city floor back to the hill relief.
   const dCity = Math.hypot(x - KATHMANDU.x, z - KATHMANDU.z);
-  const cityWeight = 1 - smoothstep((dCity - KATHMANDU.r) / 130);
+  const cityWeight = 1 - smoothstep((dCity - KATHMANDU.r) / 110);
   landH = landH * (1 - cityWeight) + KATHMANDU.h * cityWeight;
 
   // Blend land into seabed across the coastline
@@ -344,10 +344,11 @@ export function createIsland(scene: Scene): IslandResult {
         0.045 * Math.sin(positions[i] * 0.021 + positions[i + 2] * 0.013) +
         0.035 * Math.sin(positions[i] * 0.113 - positions[i + 2] * 0.071);
       terrainColor(h, slope, tint, c);
-      // Kathmandu pad reads as urban ground, not meadow: blend the
-      // vertex colour toward a warm grey inside the city radius.
+      // Kathmandu reads as urban ground, not meadow: blend the
+      // vertex colour toward a warm grey across the city radius
+      // and its fringe, so no green ring surrounds the city.
       const dCityV = Math.hypot(positions[i] - KATHMANDU.x, positions[i + 2] - KATHMANDU.z);
-      const cityW = 1 - smoothstep((dCityV - KATHMANDU.r) / 30);
+      const cityW = 1 - smoothstep((dCityV - KATHMANDU.r) / 70);
       if (cityW > 0) {
         c[0] = c[0] * (1 - cityW) + 0.56 * cityW;
         c[1] = c[1] * (1 - cityW) + 0.52 * cityW;
@@ -406,7 +407,7 @@ export function createIsland(scene: Scene): IslandResult {
     if (h < 2.4 || h > 88) continue; // beaches / bare rock stay bare; hilltops DO get trees (Jeet: "above them should be trees")
     if (airportBoxDistance(x, z) < 46) continue; // keep the airfield clear
     if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 12) continue;
-    if (Math.hypot(x - KATHMANDU.x, z - KATHMANDU.z) < KATHMANDU.r + 14) continue; // city stays clear
+    if (Math.hypot(x - KATHMANDU.x, z - KATHMANDU.z) < KATHMANDU.r + 85) continue; // no greenery in or around the city
     const slope =
       Math.abs(terrainMeshHeightAt(x + 3, z) - h) +
       Math.abs(terrainMeshHeightAt(x, z + 3) - h);

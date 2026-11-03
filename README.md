@@ -8,6 +8,16 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
+## Phase 26 — Bigger Kathmandu, no greenery
+
+Jeet's verdict on the first city: too much green around it.
+The pad grew 150 → 235 m radius, the street grid and blocks
+now fill it edge to edge (52 → 108 buildings, chord-clipped
+streets so no road leaves the flat pad), the urban ground tint
+reaches past the pad, and trees are excluded 85 m beyond it —
+inside the city there is no grass and no trees, only roads and
+buildings. Swayambhunath moved out to the new western edge.
+
 ## Phase 25 — Kathmandu city
 
 Jeet asked for the city of Kathmandu to be mapped into the sim.
