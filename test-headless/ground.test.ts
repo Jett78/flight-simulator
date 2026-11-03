@@ -471,5 +471,37 @@ function flyFinal(
   );
 }
 
+// ---------- G9. Concrete slabs read as slab tops, not terrain ----------
+// v0.24.0: apron / taxiway / remote-stand slabs sit at y = 0.12
+// over a y = 0 terrain pad; the sampler must return the slab top
+// (smooth "runway" surface, not onRunway) or wheels sink 12 cm.
+{
+  const sampler = createGroundSampler();
+  const apron = sampler(-70, 30);
+  check(
+    "apron centre reads slab top",
+    apron.height === 0.12 && apron.onRunway === false && apron.surface === "runway",
+    `height=${apron.height} surface=${apron.surface} onRunway=${apron.onRunway}`,
+  );
+  const stand = sampler(58, 94);
+  check(
+    "remote stand centre reads slab top",
+    stand.height === 0.12 && stand.onRunway === false && stand.surface === "runway",
+    `height=${stand.height} surface=${stand.surface} onRunway=${stand.onRunway}`,
+  );
+  const taxiway = sampler(-30, 30);
+  check(
+    "taxiway reads slab top",
+    taxiway.height === 0.12 && taxiway.onRunway === false,
+    `height=${taxiway.height} onRunway=${taxiway.onRunway}`,
+  );
+  const link = sampler(21.5, 94);
+  check(
+    "stand taxi link reads slab top",
+    link.height === 0.12 && link.onRunway === false,
+    `height=${link.height} onRunway=${link.onRunway}`,
+  );
+}
+
 console.log(failures === 0 ? "\nALL GROUND TESTS PASSED" : `\n${failures} GROUND TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

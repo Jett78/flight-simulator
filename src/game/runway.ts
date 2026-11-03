@@ -21,6 +21,23 @@ export const RUNWAY = {
   centerZ: 0,
 } as const;
 
+/**
+ * Concrete/asphalt slabs beyond the runway (v0.24.0): their tops
+ * sit at y = 0.12 while the island terrain pad is y = 0, so a
+ * sampler that only knows the runway rect sinks wheels 12 cm
+ * into the slabs and applies rough-ground friction there. Rects
+ * match the boxes built in createAirport.ts.
+ */
+const SLABS = [
+  { xMin: -51, xMax: -9, zMin: 25.5, zMax: 34.5 }, // taxiway
+  { xMin: -89, xMax: -51, zMin: 7, zMax: 53 }, // apron
+  { xMin: 35, xMax: 81, zMin: 76, zMax: 112 }, // remote stand
+  { xMin: 8, xMax: 35, zMin: 90, zMax: 98 }, // stand taxi link
+] as const;
+
+/** Slab top height (m): 0.12 m boxes centred at y = 0.06. */
+const SLAB_SURFACE_Y = 0.12;
+
 /** Is this world position over the asphalt (optionally shrunk/grown)? */
 export function isOverRunway(x: number, z: number, margin = 0): boolean {
   return (
@@ -31,9 +48,10 @@ export function isOverRunway(x: number, z: number, margin = 0): boolean {
 
 /**
  * The real ground sampler for the island world: runway rectangle
- * first, then the island's rendered terrain height, with the sea
- * surface wherever the terrain drops below sea level. Slope is a
- * finite difference of the terrain height (the runway is flat).
+ * first, then the concrete/asphalt slabs, then the island's
+ * rendered terrain height, with the sea surface wherever the
+ * terrain drops below sea level. Slope is a finite difference
+ * of the terrain height (the runway and slabs are flat).
  *
  * FlightScene hands this to the AircraftController, which stays
  * decoupled from the island/runway modules.
@@ -42,6 +60,9 @@ export function createGroundSampler(): GroundSampler {
   return (x: number, z: number): GroundInfo => {
     if (isOverRunway(x, z)) {
       return { height: RUNWAY.surfaceY, surface: "runway", slopeDeg: 0, gradeX: 0, gradeZ: 0, onRunway: true };
+    }
+    if (SLABS.some((s) => x >= s.xMin && x <= s.xMax && z >= s.zMin && z <= s.zMax)) {
+      return { height: SLAB_SURFACE_Y, surface: "runway", slopeDeg: 0, gradeX: 0, gradeZ: 0, onRunway: false };
     }
     // The RENDERED mesh surface, not the analytic heightfield —
     // otherwise the aircraft floats/sinks against the visible

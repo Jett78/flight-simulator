@@ -36,6 +36,12 @@ export function createAirport(scene: Scene): AirportResult {
   const markingYellow = createMaterial(scene, "marking-yellow", 0.95, 0.75, 0.1, {
     emissive: [0.2, 0.15, 0.02],
   });
+  // v0.24.0: markings sit nearly coplanar with their slabs —
+  // pull them toward the camera in depth so they stop z-fighting
+  // (runway flicker from altitude). Geometry is also raised
+  // slightly below (tops 5 cm proud instead of 2 cm).
+  markingWhite.zOffset = -2;
+  markingYellow.zOffset = -2;
   const wallLight = createMaterial(scene, "wall-light", 0.82, 0.8, 0.76);
   const roofDark = createMaterial(scene, "roof-dark", 0.16, 0.2, 0.28);
   const roofHangar = createMaterial(scene, "roof-hangar", 0.45, 0.48, 0.52);
@@ -125,12 +131,13 @@ export function createAirport(scene: Scene): AirportResult {
   // ---------- Runway (along Z) ----------
   box("runway", { width: 18, height: 0.16, depth: 300 }, [0, 0.08, 0], asphalt);
 
-  // Edge lines
+  // Edge lines (v0.24.0: tops 5 cm proud of the asphalt — they
+  // were 2 cm and z-fought from altitude; bottoms stay buried)
   for (const side of [-1, 1]) {
     box(
       `runway-edge-${side}`,
-      { width: 0.5, height: 0.18, depth: 296 },
-      [side * 8.2, 0.09, 0],
+      { width: 0.5, height: 0.3, depth: 296 },
+      [side * 8.2, 0.06, 0],
       markingWhite,
     );
   }
@@ -139,8 +146,8 @@ export function createAirport(scene: Scene): AirportResult {
   for (let z = -136; z <= 136; z += 16) {
     box(
       `centreline-${z}`,
-      { width: 0.7, height: 0.18, depth: 8 },
-      [0, 0.09, z],
+      { width: 0.7, height: 0.3, depth: 8 },
+      [0, 0.06, z],
       markingWhite,
     );
   }
@@ -151,8 +158,8 @@ export function createAirport(scene: Scene): AirportResult {
       if (i === 0) continue;
       box(
         `threshold-${end}-${i}`,
-        { width: 1.1, height: 0.18, depth: 10 },
-        [i * 2.2, 0.09, end * 142],
+        { width: 1.1, height: 0.3, depth: 10 },
+        [i * 2.2, 0.06, end * 142],
         markingWhite,
       );
     }
@@ -164,11 +171,11 @@ export function createAirport(scene: Scene): AirportResult {
   // the coplanar dark/light faces z-fought (flickering black
   // patches in front of the hangars).
   box("taxiway", { width: 42, height: 0.12, depth: 9 }, [-30, 0.06, 30], asphalt);
-  // Taxiway centreline
+  // Taxiway centreline (top 5 cm proud, same z-fight fix)
   box(
     "taxiway-centreline",
-    { width: 40, height: 0.14, depth: 0.5 },
-    [-30, 0.07, 30],
+    { width: 40, height: 0.26, depth: 0.5 },
+    [-30, 0.04, 30],
     markingYellow,
   );
   box("apron", { width: 38, height: 0.12, depth: 46 }, [-70, 0.06, 30], concrete);
@@ -311,8 +318,8 @@ export function createAirport(scene: Scene): AirportResult {
   box("stand-taxi-link", { width: 27, height: 0.12, depth: 8 }, [21.5, 0.06, 94], asphalt);
   box(
     "stand-taxi-link-line",
-    { width: 25, height: 0.14, depth: 0.5 },
-    [21.5, 0.07, 94],
+    { width: 25, height: 0.26, depth: 0.5 },
+    [21.5, 0.04, 94],
     markingYellow,
   );
   box("remote-stand", { width: 46, height: 0.12, depth: 36 }, [58, 0.06, 94], concrete);

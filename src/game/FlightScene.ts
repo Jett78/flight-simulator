@@ -289,7 +289,7 @@ export class FlightScene {
     }
 
     this.camera = new FreeCamera("chase-camera", AIRCRAFT_START.clone(), this.scene);
-    this.camera.minZ = 0.1;
+    this.camera.minZ = 1.0; // chase default; applyCameraDepth adjusts per mode
     this.camera.maxZ = 8000; // island + sky dome (radius 6300) in view
     this.camera.fov = this.aircraftConfig.camera.fov; // Phase 5: per-aircraft base FOV
     this.resetCamera(); // snap straight to the chase pose, no opening swoop
@@ -521,7 +521,21 @@ export class FlightScene {
     if (previous === "Cockpit" || this.cameraMode.name === "Cockpit") {
       this.resetCamera();
     }
+    this.applyCameraDepth();
     this.onCameraModeChange?.(this.cameraMode.name);
+  }
+
+  /**
+   * Depth precision (v0.24.0): with minZ 0.1 and maxZ 8000 the
+   * depth buffer cannot resolve the runway markings (2 cm above
+   * the asphalt) beyond a few hundred metres — from altitude
+   * they z-fight and the runway flickers (Jeet). Chase cameras
+   * never get closer than ~2 m to anything, so they use
+   * minZ 1.0 (10x the depth precision); the cockpit camera sits
+   * inside the airframe and keeps the small near plane.
+   */
+  private applyCameraDepth(): void {
+    this.camera.minZ = this.cameraMode.name === "Cockpit" ? 0.1 : 1.0;
   }
 
   /** World-space camera pose for the aircraft's current transform. */
@@ -746,6 +760,10 @@ export class FlightScene {
     const reveal = () => {
       if (revealed) return;
       revealed = true;
+      // v0.24.0: the 6 s timer can fire after the scene was
+      // disposed (aircraft switched mid-load) — never re-enable
+      // a node belonging to a dead scene.
+      if (this.disposed) return;
       airplane.setEnabled(true);
     };
     const revealTimer = setTimeout(reveal, 6000);
@@ -758,6 +776,10 @@ export class FlightScene {
       this.aircraftConfig.modelYawDeg ?? 0,
     ).then(
       (loaded) => {
+        // v0.24.0: the model can land after the scene was
+        // disposed (aircraft switched mid-load) — drop it rather
+        // than seating cameras / paint on a dead scene.
+        if (this.disposed) return;
         clearTimeout(revealTimer);
         this.modelKind = loaded ? "gltf" : "placeholder";
         if (loaded) {
