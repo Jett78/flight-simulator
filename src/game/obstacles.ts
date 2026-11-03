@@ -74,6 +74,11 @@ export function obstacleLabel(name: string): string {
   if (name.startsWith("tower")) return "the control tower";
   if (name.startsWith("office")) return "the office block";
   if (name.startsWith("house")) return "a village house";
+  if (name.startsWith("dharahara")) return "the Dharahara tower";
+  if (name.startsWith("swayambhu")) return "the Swayambhunath stupa";
+  if (name.startsWith("durbar-temple")) return "a Durbar Square temple";
+  if (name.startsWith("clock-tower")) return "the Ghanta Ghar clock tower";
+  if (name.startsWith("city-")) return "a Kathmandu building";
   if (name.startsWith("helicopter")) return "a helicopter";
   if (name.startsWith("parked")) return "a parked aircraft";
   if (name.startsWith("lighthouse")) return "the lighthouse";

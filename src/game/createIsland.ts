@@ -14,6 +14,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import type { Scene } from "@babylonjs/core/scene";
 import { createMaterial } from "./materials";
+import { createKathmandu, KATHMANDU } from "./createKathmandu";
 import type { Obstacle } from "./obstacles";
 
 /**
@@ -34,6 +35,8 @@ import type { Obstacle } from "./obstacles";
  *   the ocean surface at -1.8 m — beaches emerge where the terrain
  *   crosses sea level.
  * - A small flattened village pad on the south-east shore.
+ * - A flattened Kathmandu valley pad west of the airport
+ *   (Phase 25, see createKathmandu.ts).
  *
  * Performance: one static terrain mesh (~45k triangles), one ocean
  * plane, one sky dome, and trees as two InstancedMeshes (2 draw
@@ -143,6 +146,13 @@ export function heightAt(x: number, z: number): number {
   const dVillage = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
   const villageWeight = 1 - smoothstep((dVillage - VILLAGE.r) / 80);
   landH = landH * (1 - villageWeight) + VILLAGE.h * villageWeight;
+
+  // Kathmandu pad (Phase 25): a flat valley floor west of the
+  // airport. The blend band outside the pad is the valley wall —
+  // terrain climbs from the city floor back to the hill relief.
+  const dCity = Math.hypot(x - KATHMANDU.x, z - KATHMANDU.z);
+  const cityWeight = 1 - smoothstep((dCity - KATHMANDU.r) / 130);
+  landH = landH * (1 - cityWeight) + KATHMANDU.h * cityWeight;
 
   // Blend land into seabed across the coastline
   let h = -7 + (landH + 7) * smoothstep(coastT);
@@ -334,6 +344,15 @@ export function createIsland(scene: Scene): IslandResult {
         0.045 * Math.sin(positions[i] * 0.021 + positions[i + 2] * 0.013) +
         0.035 * Math.sin(positions[i] * 0.113 - positions[i + 2] * 0.071);
       terrainColor(h, slope, tint, c);
+      // Kathmandu pad reads as urban ground, not meadow: blend the
+      // vertex colour toward a warm grey inside the city radius.
+      const dCityV = Math.hypot(positions[i] - KATHMANDU.x, positions[i + 2] - KATHMANDU.z);
+      const cityW = 1 - smoothstep((dCityV - KATHMANDU.r) / 30);
+      if (cityW > 0) {
+        c[0] = c[0] * (1 - cityW) + 0.56 * cityW;
+        c[1] = c[1] * (1 - cityW) + 0.52 * cityW;
+        c[2] = c[2] * (1 - cityW) + 0.47 * cityW;
+      }
       colors.push(c[0], c[1], c[2], 1);
     }
     terrain.setVerticesData(VertexBuffer.ColorKind, colors);
@@ -387,6 +406,7 @@ export function createIsland(scene: Scene): IslandResult {
     if (h < 2.4 || h > 88) continue; // beaches / bare rock stay bare; hilltops DO get trees (Jeet: "above them should be trees")
     if (airportBoxDistance(x, z) < 46) continue; // keep the airfield clear
     if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 12) continue;
+    if (Math.hypot(x - KATHMANDU.x, z - KATHMANDU.z) < KATHMANDU.r + 14) continue; // city stays clear
     const slope =
       Math.abs(terrainMeshHeightAt(x + 3, z) - h) +
       Math.abs(terrainMeshHeightAt(x, z + 3) - h);
@@ -469,6 +489,10 @@ export function createIsland(scene: Scene): IslandResult {
     roof.material = roofMat;
     roof.receiveShadows = true;
   });
+
+  // ---------- Kathmandu city (Phase 25, on the flattened valley pad) ----------
+  const city = createKathmandu(scene);
+  obstacles.push(...city.obstacles);
 
   // ---------- Lighthouse (east headland, h ~2.6 m, gentle slope) ----------
   {

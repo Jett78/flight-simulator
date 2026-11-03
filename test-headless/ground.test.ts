@@ -12,6 +12,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { AircraftController } from "../src/game/AircraftController";
 import type { InputManager } from "../src/game/InputManager";
 import { createGroundSampler } from "../src/game/runway";
+import { KATHMANDU } from "../src/game/createKathmandu";
 
 const DT = 1 / 120;
 const START = new Vector3(0, 2.41, 68);
@@ -500,6 +501,26 @@ function flyFinal(
     "stand taxi link reads slab top",
     link.height === 0.12 && link.onRunway === false,
     `height=${link.height} onRunway=${link.onRunway}`,
+  );
+}
+
+// ---------- G10. Kathmandu pad is a flat valley floor ----------
+// Phase 25: heightAt flattens the city pad west of the airport to
+// KATHMANDU.h, so the sampler must read exactly that height at the
+// centre (and the city must not sit on the runway or in the sea).
+{
+  const sampler = createGroundSampler();
+  const centre = sampler(KATHMANDU.x, KATHMANDU.z);
+  check(
+    "Kathmandu centre reads the flat pad height",
+    Math.abs(centre.height - KATHMANDU.h) < 0.01 && centre.surface === "terrain",
+    `height=${centre.height} surface=${centre.surface}`,
+  );
+  const edge = sampler(KATHMANDU.x + 100, KATHMANDU.z + 60);
+  check(
+    "Kathmandu pad is flat 100 m out too",
+    Math.abs(edge.height - KATHMANDU.h) < 0.01,
+    `height=${edge.height}`,
   );
 }
 

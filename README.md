@@ -8,6 +8,26 @@ https://flight-simulator-nepal-tech.vercel.app
 No backend, no accounts, no paid APIs — everything (3D world,
 flight physics, missions, sound) runs locally in the browser.
 
+## Phase 25 — Kathmandu city
+
+Jeet asked for the city of Kathmandu to be mapped into the sim.
+West of the airport — the same side as the real city sits from
+Tribhuvan airport — the terrain now flattens into a Kathmandu
+Valley floor (`KATHMANDU` pad in `createKathmandu.ts`, blended
+into `heightAt` in `createIsland.ts`), with the hills rising
+around it as the valley wall.
+
+On the pad: a road grid over an urban ground disc, ~52 mid-rise
+buildings in a brick/cream/concrete valley palette (merged by
+colour, so the whole city costs ~25 draw calls) with rooftop
+water tanks, and the landmarks — Durbar Square's tiered pagoda
+temples, the white Dharahara tower, Swayambhunath's dome and
+gold spire on its western mound, and the Ghanta Ghar clock
+tower. Every building and landmark is a registered solid
+obstacle: crash text names them ("the Dharahara tower", ...).
+A soft gold beacon over the centre and a KTM marker on the
+mission minimap make the city findable from the air.
+
 ## Phase 12.1 — Find the next ring
 
 Jeet played Checkpoint Flight live and reported that after

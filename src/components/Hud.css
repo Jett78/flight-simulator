@@ -966,6 +966,19 @@
   stroke-width: 1.7;
 }
 
+.hud-map-city rect {
+  fill: rgba(255, 180, 0, 0.35);
+  stroke: #ffb400;
+  stroke-width: 0.5;
+}
+
+.hud-map-city text {
+  font-size: 3px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: #ffd97a;
+}
+
 .hud-map-route {
   fill: none;
   stroke: rgba(130, 185, 255, 0.8);
@@ -1036,6 +1049,10 @@
 
 .hud-map-legend .is-you {
   color: #ffffff;
+}
+
+.hud-map-legend .is-city {
+  color: #ffd97a;
 }
 
 @media (max-height: 840px) {

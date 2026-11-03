@@ -17,6 +17,7 @@ import type { InputManager } from "../src/game/InputManager";
 import { ObstacleField, type Obstacle } from "../src/game/obstacles";
 import { createAirport } from "../src/game/createAirport";
 import { createIsland, VILLAGE } from "../src/game/createIsland";
+import { KATHMANDU } from "../src/game/createKathmandu";
 
 const DT = 1 / 120;
 let failures = 0;
@@ -58,6 +59,25 @@ class FakeInput {
   check(
     "A6 village house is solid",
     field.query(VILLAGE.x - 26, VILLAGE.h + 1, VILLAGE.z - 14, 4)?.name === "house-0",
+  );
+  check(
+    "A9 Kathmandu buildings are registered",
+    island.obstacles.filter((o) => o.name.startsWith("city-building")).length >= 40,
+    `${island.obstacles.filter((o) => o.name.startsWith("city-building")).length} city buildings`,
+  );
+  check(
+    "A10 Dharahara is solid and labelled",
+    field.query(KATHMANDU.x + 60, KATHMANDU.h + 10, KATHMANDU.z + 58, 4)?.label ===
+      "the Dharahara tower",
+  );
+  check(
+    "A11 Swayambhunath stupa is solid",
+    field.query(KATHMANDU.x - 122, KATHMANDU.h + 10, KATHMANDU.z - 122, 4)?.name ===
+      "swayambhu-stupa",
+  );
+  check(
+    "A12 Kathmandu pad centre road is clear of obstacles",
+    field.query(KATHMANDU.x, KATHMANDU.h + 2, KATHMANDU.z, 4) === null,
   );
   check("A7 spawn point is clear", field.query(0, 2.41, 105, 4) === null);
   check("A8 runway centre is clear", field.query(0, 2.41, -60, 4) === null);

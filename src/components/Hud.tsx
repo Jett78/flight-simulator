@@ -604,7 +604,7 @@ export function Hud({
     <div className="hud-root">
       {/* Title */}
       <header className="hud-panel hud-title">
-        <div className="hud-badge">PHASE 24 · FLICKER FIX & HARDENING</div>
+        <div className="hud-badge">PHASE 25 · KATHMANDU CITY</div>
         <h1>Flight Simulator</h1>
         <div ref={groundChip} className="hud-ground-chip" data-air="false">
           ON GROUND
@@ -874,6 +874,11 @@ export function Hud({
               y2={mapCoord(150)}
               className="hud-map-runway"
             />
+            {/* Phase 25: Kathmandu city marker, west of the airport */}
+            <g className="hud-map-city">
+              <rect x={mapCoord(-640) - 2.6} y={mapCoord(-120) - 2.6} width={5.2} height={5.2} rx={1} />
+              <text x={mapCoord(-640)} y={mapCoord(-120) + 5.6}>KTM</text>
+            </g>
             <polyline
               points={[
                 `${mapCoord(0)},${mapCoord(105)}`,
@@ -905,6 +910,7 @@ export function Hud({
             <span className="is-done">● Done</span>
             <span className="is-todo">● Later</span>
             <span className="is-you">▲ You</span>
+            <span className="is-city">■ Kathmandu</span>
           </div>
         </aside>
       )}
